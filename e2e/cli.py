@@ -14,6 +14,7 @@ from .guardrails import check as check_guardrails, policy as guardrail_policy, w
 from .memory import Memory
 from .orchestrator import write_plan
 from .release import release_check
+from .runtime_contract import contract, parity
 from .skills import discover, match
 from .tool_gateway import serve, write_mcp_configs
 from .tools import check_registry, load_tools, policy_for_role
@@ -37,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     g = sub.add_parser("guardrails"); gs = g.add_subparsers(dest="guardrail_cmd", required=True); gs.add_parser("policy"); gc = gs.add_parser("check"); gc.add_argument("--stage", choices=("pre-edit", "pre-commit", "pre-merge", "verification"), default="verification"); gs.add_parser("write")
     m = sub.add_parser("memory"); ms = m.add_subparsers(dest="memory_cmd", required=True); ml = ms.add_parser("list"); ml.add_argument("--scope"); ml.add_argument("--include-expired", action="store_true"); mq = ms.add_parser("search"); mq.add_argument("query"); mq.add_argument("--scope"); mq.add_argument("--limit", type=int, default=20); ma = ms.add_parser("add"); ma.add_argument("kind"); ma.add_argument("scope"); ma.add_argument("summary"); ma.add_argument("--evidence", action="append", default=[]); ma.add_argument("--source", default="runtime"); ma.add_argument("--confidence", default="verified"); ma.add_argument("--expires-days", type=int); ma.add_argument("--supersedes")
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
+    rt = sub.add_parser("runtime"); rts = rt.add_subparsers(dest="runtime_cmd", required=True); rti = rts.add_parser("inspect"); rti.add_argument("--runtime", choices=("claude-code", "codex")); rti.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1"); rtc = rts.add_parser("contract"); rtc.add_argument("--runtime", choices=("claude-code", "codex"), required=True); rtc.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1"); rtp = rts.add_parser("parity"); rtp.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1")
     r = sub.add_parser("run"); r.add_argument("task")
     o = sub.add_parser("orchestrate"); o.add_argument("task")
     e = sub.add_parser("execute"); e.add_argument("task"); e.add_argument("--runtime", choices=("auto", "claude-code", "codex"), default="auto"); e.add_argument("--execute", dest="execute_agents", action="store_true", help="Actually launch SD1/SD3 agents; default is dry-run"); e.add_argument("--max-workers", type=int, default=4)
@@ -90,6 +92,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.brain_cmd == "map": print(json.dumps(brain.map(args.path), indent=2)); return 0
         if args.brain_cmd == "search": print(json.dumps(brain.search(args.query), indent=2)); return 0
         if args.brain_cmd == "impact": print(json.dumps(brain.impact(args.target), indent=2)); return 0
+    if args.cmd == "runtime":
+        if args.runtime_cmd == "inspect":
+            if args.runtime: print(json.dumps(contract(root, args.runtime, args.role), indent=2))
+            else: print(json.dumps({"claude-code": contract(root, "claude-code", args.role), "codex": contract(root, "codex", args.role)}, indent=2))
+            return 0
+        if args.runtime_cmd == "contract": print(json.dumps(contract(root, args.runtime, args.role), indent=2)); return 0
+        result = parity(root, args.role); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd in {"run", "orchestrate"}:
         result = write_plan(root, args.task); print(json.dumps(result, indent=2)); return 0
     if args.cmd == "execute":
