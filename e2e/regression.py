@@ -48,14 +48,14 @@ def find_regressions(root: str | Path, task: str, limit: int = 20) -> list[dict[
     terms = _task_terms(task)
     matches = []
     for item in load_eval_history(root, limit=limit):
-        hay = " ".join(str(item.get(k, "")) for k in ("suite", "description", "task", "id")).lower()
+        hay = " ".join(str(item.get(k, "")) for k in ("suite", "suite_id", "description", "task", "id")).lower()
         if terms and not any(term in hay for term in terms):
             continue
         summary = item.get("summary", item.get("aggregate", {}))
         failed = int(summary.get("failed", 0)) if isinstance(summary, dict) else 0
-        passed = int(summary.get("passed", 0)) if isinstance(summary, dict) else 0
+        passed = int(summary.get("passed", summary.get("successes", 0))) if isinstance(summary, dict) else 0
         if failed:
-            matches.append({"suite": item.get("suite", item.get("id")), "path": item["_path"], "failed": failed, "passed": passed, "signal": "historical-failure"})
+            matches.append({"suite": item.get("suite", item.get("suite_id", item.get("id"))), "path": item["_path"], "failed": failed, "passed": passed, "signal": "historical-failure"})
     return matches
 
 
