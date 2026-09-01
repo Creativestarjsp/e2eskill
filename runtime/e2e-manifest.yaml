@@ -1,0 +1,51 @@
+version: 1
+system: e2e
+mode: standard
+
+context:
+  layers: [runtime, project, repository, task, code, historical]
+  max_package_size: bounded
+  missing_context_policy: report
+
+rules:
+  precedence: [safety, repository, path, project, skill, task, local]
+  conflict_policy: escalate
+
+agents:
+  supervisor: sd3
+  orchestrator: sd2
+  workers: sd1
+  max_parallel_workers: 4
+  retry_policy: diagnose_then_escalate
+
+minimality:
+  enabled: true
+  decision_ladder: [need, reuse, stdlib, native, dependency, simple, custom]
+  safety_override: never
+
+codebrain:
+  provider: native
+  fallback: none
+  required_for_impact_analysis: true
+
+hooks:
+  lifecycle: [pre-task, pre-context, pre-edit, post-edit, pre-test, post-test, pre-commit, verification]
+  security_fail_closed: true
+
+verification:
+  independent_supervisor: true
+  evidence_required: true
+  acceptance_traceability: true
+
+memory:
+  record_decisions: true
+  record_failures: true
+  record_verified_patterns: true
+
+runtime_adapters:
+  preferred: auto
+  supported: [claude-code, codex]
+
+profiles:
+  default: standard
+  allowed: [lite, standard, strict]
