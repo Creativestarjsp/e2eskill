@@ -35,7 +35,7 @@ def test_orchestrator_escalates_workers_for_historical_regression(tmp_path):
     eval_dir = tmp_path / ".e2e" / "evals"
     eval_dir.mkdir(parents=True)
     (eval_dir / "authentication.json").write_text(
-        '{"suite_id":"authentication","summary":{"attempts":4,"successes":2,"pass_rate":0.5}}',
+        '{"suite_id":"authentication","summary":{"attempts":4,"successes":3,"failed":1,"pass_rate":0.75}}',
         encoding="utf-8",
     )
 
