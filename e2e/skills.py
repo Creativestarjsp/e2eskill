@@ -7,8 +7,9 @@ from typing import Any
 
 def _section(text: str, headings: tuple[str, ...]) -> str:
     lines = text.splitlines()
+    wanted = {h.lower() for h in headings}
     for i, line in enumerate(lines):
-        if line.strip().lower().lstrip("# ") in {h.lower() for h in headings}:
+        if line.strip().lower().lstrip("# ") in wanted:
             out = []
             for x in lines[i + 1:]:
                 if x.startswith("#"):
@@ -20,13 +21,19 @@ def _section(text: str, headings: tuple[str, ...]) -> str:
 
 def discover(root: str | Path = ".") -> list[dict[str, Any]]:
     root = Path(root).resolve()
+    skills_root = root / "skills"
+    if not skills_root.exists():
+        return []
     result = []
-    for p in sorted((root / "skills").glob("*/SKILL.md")) if (root / "skills").exists() else []:
+    for p in sorted(skills_root.glob("*/SKILL.md")):
         text = p.read_text(encoding="utf-8", errors="replace")
-        name = p.parent.name
-        purpose = _section(text, ("Purpose",))
-        triggers = _section(text, ("Use When", "Triggers"))
-        result.append({"name": name, "path": p.relative_to(root).as_posix(), "purpose": purpose[:800], "triggers": triggers[:1200], "size": len(text)})
+        result.append({
+            "name": p.parent.name,
+            "path": p.relative_to(root).as_posix(),
+            "purpose": _section(text, ("Purpose",))[:800],
+            "triggers": _section(text, ("Use When", "Triggers"))[:1200],
+            "size": len(text),
+        })
     return result
 
 
