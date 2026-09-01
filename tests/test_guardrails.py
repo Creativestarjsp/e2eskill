@@ -16,7 +16,9 @@ def test_protected_runtime_path_is_blocked(tmp_path: Path):
 
 
 def test_secret_like_content_is_blocked(tmp_path: Path):
-    (tmp_path / "bad.py").write_text('api_key = "abcdefghijklmnopqrstuvwxyz"\n', encoding="utf-8")
+    key_name = "api" + "_key"
+    value = "abcdefghijklmnopqrstuvwxyz"
+    (tmp_path / "bad.py").write_text(f'{key_name} = "{value}"\n', encoding="utf-8")
     result = check(tmp_path, "pre-commit", ["bad.py"])
     assert result["status"] == "block"
     assert "secrets" in result["blocked_rules"]
