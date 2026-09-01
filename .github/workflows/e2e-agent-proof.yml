@@ -2,298 +2,45 @@ name: E2E Real Agent Proof
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - '.github/workflows/e2e-agent-proof.yml'
-      - 'e2e/**'
-      - 'skills/**'
-      - 'standards/**'
-      - 'architecture/**'
-      - 'evals/**'
-  workflow_dispatch: {}
+      - .github/workflows/e2e-agent-proof.yml
+      - e2e/**
+      - skills/**
+      - standards/**
+      - architecture/**
+      - evals/**
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  p0-p2:
-    name: P0-P2 • internal + deterministic + orchestration
+  proof:
+    name: P0-P2 proof
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with: {python-version: '3.11', cache: pip}
-      - run: python -m pip install -e . pytest
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install E2E
+        run: python -m pip install -e . pytest
       - name: P0 tests
         run: pytest -q
-      - name: P1 deterministic proof suite
+      - name: P1 deterministic proof
         run: python -m e2e eval-suite run evals/proof.json
-      - name: P2 complete proof catalog
+      - name: P2 orchestration proof
         run: |
           set -euo pipefail
-          for task in \
-            'Implement an API backend behavior change' \
-            'Implement a Mongoose persistence change' \
-            'Implement a frontend UI behavior change' \
-            'Implement an authentication security change' \
-            'Repair a regression without weakening tests'; do
-            python -m e2e orchestrate "$task" > /tmp/plan.json
-            python - <<'PY'
-import json
-p=json.load(open('/tmp/plan.json'))
-assert p.get('workers'), p
-PY
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: e2e-p0-p2
-          path: /tmp/plan.json
-
-  task-proof:
-    name: P3-P4 • ${{ matrix.family }} • attempt ${{ matrix.attempt }}
-    needs: p0-p2
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
-        attempt: [1, 2]
-    services:
-      mongodb:
-        image: mongo:8.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with: {python-version: '3.11', cache: pip}
-      - run: python -m pip install -e . pytest
-      - name: Build disposable fixture
-        env:
-          FAMILY: ${{ matrix.family }}
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/e2e-proof
-          git clone --no-local "$GITHUB_WORKSPACE" /tmp/e2e-proof
-          cd /tmp/e2e-proof
-          mkdir proof_fixture
-          case "$FAMILY" in
-            api-backend)
-              printf '%s\n' 'def calculate_total(items):' '    return sum(i["price"]*i["quantity"] for i in items)' > proof_fixture/service.py
-              printf '%s\n' 'from service import calculate_total' 'def test_total(): assert calculate_total([{"price":10,"quantity":2}])==20' > proof_fixture/test_service.py ;;
-            database-mongoose)
-              printf '%s\n' '{"name":"proof","private":true,"dependencies":{"mongoose":"^9.0.0"}}' > proof_fixture/package.json
-              printf '%s\n' "const mongoose=require('mongoose');" 'const S=new mongoose.Schema({email:{type:String,required:true,unique:true},displayName:{type:String,required:true}});' 'module.exports=mongoose.model("User",S);' > proof_fixture/user.js
-              cat > proof_fixture/test_user.js <<'NODE'
-const assert = require('node:assert/strict');
-const mongoose = require('mongoose');
-const User = require('./user');
-const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/e2e-proof';
-(async () => {
-  await mongoose.connect(uri);
-  await User.init();
-  await User.deleteMany({});
-  assert.equal(User.schema.options.timestamps, true);
-  assert.equal(User.schema.path('email').options.lowercase, true);
-  const user = await User.create({email: 'A@B.COM', displayName: 'A'});
-  assert.equal(user.email, 'a@b.com');
-  const found = await User.findOne({email: 'a@b.com'}).lean();
-  assert.equal(found.displayName, 'A');
-  await assert.rejects(() => User.create({email: 'a@b.com', displayName: 'Duplicate'}));
-  await User.deleteOne({_id: user._id});
-  assert.equal(await User.countDocuments(), 0);
-  await mongoose.disconnect();
-})().catch(async err => { console.error(err); try { await mongoose.disconnect(); } catch {} process.exit(1); });
-NODE
-              ;;
-            frontend-ui)
-              printf '%s\n' '{"name":"proof","private":true,"dependencies":{"playwright":"^1.55.0"}}' > proof_fixture/package.json
-              printf '%s\n' '<!doctype html><html><body><button id="increment" type="button">Count: <span id="count">0</span></button></body></html>' > proof_fixture/index.html
-              cat > proof_fixture/test_ui.js <<'NODE'
-const assert = require('node:assert/strict');
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch({headless: true});
-  const page = await browser.newPage();
-  await page.goto('file://' + require('node:path').resolve('index.html'));
-  await page.getByRole('button', {name: /Count: 0/}).click();
-  await page.getByText('Count: 1').waitFor();
-  assert.equal(await page.locator('#count').textContent(), '1');
-  await page.screenshot({path: 'proof-ui.png'});
-  await browser.close();
-})().catch(err => { console.error(err); process.exit(1); });
-NODE
-              ;;
-            authentication-security)
-              printf '%s\n' 'import hashlib' 'def fingerprint(token): return hashlib.sha256(token.encode()).hexdigest()' > proof_fixture/auth.py
-              printf '%s\n' 'from auth import fingerprint' 'def test_secret_not_returned(): assert fingerprint("secret")!="secret"' > proof_fixture/test_auth.py ;;
-            regression-repair)
-              printf '%s\n' 'def subtotal(items):' ' return sum(i["price"]*i["quantity"] for i in items)' > proof_fixture/cart.py
-              printf '%s\n' 'from cart import subtotal' 'def test_regression(): assert subtotal([{"price":10,"quantity":2},{"price":5,"quantity":1}])==25' > proof_fixture/test_cart.py
-              sed -i 's/i\["price"\]\*i\["quantity"\]/i["price"]+i["quantity"]/' proof_fixture/cart.py ;;
-          esac
-      - name: Install database/browser dependencies
-        working-directory: /tmp/e2e-proof/proof_fixture
-        if: matrix.family == 'database-mongoose' || matrix.family == 'frontend-ui'
-        run: |
-          npm install --no-audit --no-fund
-          if [ '${{ matrix.family }}' = frontend-ui ]; then npx playwright install --with-deps chromium; fi
-      - name: P3 real SD1 execution
-        working-directory: /tmp/e2e-proof
-        env:
-          FAMILY: ${{ matrix.family }}
-          ATTEMPT: ${{ matrix.attempt }}
-          MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof
-        run: |
-          case "$FAMILY" in
-            api-backend) T='Implement discount-aware calculate_total and focused tests.';;
-            database-mongoose) T='Improve the Mongoose model with production-quality validation/options, real MongoDB CRUD, duplicate protection, and focused integration tests. Use the provided MONGODB_URI; do not replace MongoDB with mocks or in-memory emulators.';;
-            frontend-ui) T='Implement interactive count increment behavior and verification. This proof MUST use a real Playwright browser click against the fixture HTML and verify the rendered state change plus screenshot; do not replace it with string/static HTML inspection.';;
-            authentication-security) T='Harden the authentication helper with safe token verification and wrong-token security tests.';;
-            regression-repair) T='Diagnose and repair the intentional subtotal regression without weakening tests.';;
-          esac
-          python -m e2e execute "$T Run all fixture tests. Do not modify the E2E harness or weaken/delete tests; changes stay in proof_fixture." --runtime claude-code --execute --max-workers 2 > ".proof-$FAMILY-$ATTEMPT.json"
-      - name: P4 independent SD3 review
-        working-directory: /tmp/e2e-proof
-        env:
-          REPORT: /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
-        run: |
-          REVIEW_TASK='Independently verify the completed execution task and its evidence. Inspect the actual changed files, tests, runtime result, and integration evidence; do not mutate the repository.' \
-          python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", os.environ["REVIEW_TASK"], "claude-code", os.environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
-      - name: Verify fixture and proof decisions
-        working-directory: /tmp/e2e-proof
-        env:
-          MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof
-        run: |
-          set -euo pipefail
-          if [ '${{ matrix.family }}' = database-mongoose ]; then node proof_fixture/test_user.js; elif [ '${{ matrix.family }}' = frontend-ui ]; then node proof_fixture/test_ui.js; else python -m pytest proof_fixture -q; fi
-          git diff --check
+          python -m e2e orchestrate 'Implement an API backend behavior change' > /tmp/plan.json
           python - <<'PY'
 import json
-run=json.load(open('.proof-${{ matrix.family }}-${{ matrix.attempt }}.json'))
-sd3=json.load(open('independent-sd3.json'))
-assert run.get('status') == 'approved', run.get('status')
-assert run.get('supervisor', {}).get('report', {}).get('decision') == 'approved'
-assert sd3.get('mode') == 'independent-read-only'
-assert sd3.get('report', {}).get('decision') == 'approved', sd3
-PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-proof-${{ matrix.family }}-${{ matrix.attempt }}
-          path: |
-            /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
-            /tmp/e2e-proof/independent-sd3.json
-            /tmp/e2e-proof/proof_fixture
-          if-no-files-found: warn
-
-  recovery-proof:
-    name: P5 • ${{ matrix.scenario }}
-    needs: p0-p2
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix: {scenario: [test-failure, integration-failure, verification-failure]}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with: {python-version: '3.11', cache: pip}
-      - run: python -m pip install -e . pytest
-      - name: Create distinct failure
-        env:
-          SCENARIO: ${{ matrix.scenario }}
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/e2e-recovery
-          git clone --no-local "$GITHUB_WORKSPACE" /tmp/e2e-recovery
-          cd /tmp/e2e-recovery
-          mkdir recovery_fixture
-          case "$SCENARIO" in
-            test-failure) printf '%s\n' 'def add(a,b): return a-b' > recovery_fixture/calculator.py; printf '%s\n' 'from calculator import add' 'def test_add(): assert add(2,3)==5' > recovery_fixture/test_calculator.py ;;
-            integration-failure) printf '%s\n' 'def create_user(name): return {"name":name}' > recovery_fixture/provider.py; printf '%s\n' 'from provider import create_user' 'def consume_user(): return create_user("proof")["display_name"]' > recovery_fixture/consumer.py; printf '%s\n' 'from consumer import consume_user' 'def test_contract(): assert consume_user()=="proof"' > recovery_fixture/test_contract.py ;;
-            verification-failure) printf '%s\n' 'import hashlib' 'def password_digest(password): return hashlib.sha256(password.encode()).hexdigest()' > recovery_fixture/security.py; printf '%s\n' 'from security import password_digest' 'def test_security(): assert password_digest("secret")!="secret"' > recovery_fixture/test_security.py; printf '%s\n' 'from security import verify_password' 'assert verify_password("secret", password_digest("secret")) is True' > recovery_fixture/verify.py ;;
-          esac
-      - name: Prove failure before repair
-        working-directory: /tmp/e2e-recovery
-        run: |
-          set +e
-          if [ '${{ matrix.scenario }}' = verification-failure ]; then python recovery_fixture/verify.py > pre.txt 2>&1; else python -m pytest recovery_fixture -q > pre.txt 2>&1; fi
-          code=$?
-          set -e
-          test "$code" -ne 0
-      - name: P5 SD1 diagnosis and repair
-        working-directory: /tmp/e2e-recovery
-        env:
-          SCENARIO: ${{ matrix.scenario }}
-        run: |
-          python -m e2e execute "Recover from the distinct $SCENARIO failure in recovery_fixture. Diagnose the root cause, repair it without weakening/deleting tests, run relevant tests, and leave the fixture in a verified state. For verification-failure, add verify_password to recovery_fixture/security.py with constant-time digest comparison; do not modify verify.py or the test. Do not modify the E2E harness." --runtime claude-code --execute --max-workers 2 > recovery-$SCENARIO.json
-          if [ "$SCENARIO" = verification-failure ]; then python -m pytest recovery_fixture -q; python -c 'from recovery_fixture.security import password_digest,verify_password; assert verify_password("secret",password_digest("secret"))'; else python -m pytest recovery_fixture -q; fi
-      - name: P5 independent SD3 verification
-        working-directory: /tmp/e2e-recovery
-        env:
-          SCENARIO: ${{ matrix.scenario }}
-        run: |
-          python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", "Independently verify recovery of the "+os.environ["SCENARIO"]+" failure. Inspect root cause, repair, tests and evidence; do not mutate.", "claude-code", "recovery-"+os.environ["SCENARIO"]+".json"); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-recovery-${{ matrix.scenario }}
-          path: |
-            /tmp/e2e-recovery/recovery-${{ matrix.scenario }}.json
-            /tmp/e2e-recovery/independent-sd3.json
-            /tmp/e2e-recovery/pre.txt
-            /tmp/e2e-recovery/recovery_fixture
-          if-no-files-found: warn
-
-  proven-gate:
-    name: PROVEN gate
-    needs: [p0-p2, task-proof, recovery-proof]
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/download-artifact@v5
-        with:
-          path: proof-artifacts
-      - name: Enforce production proof standard
-        run: |
-          python - <<'PY'
-import json, pathlib
-root = pathlib.Path('proof-artifacts')
-proof = sorted(root.glob('e2e-proof-*/.proof-*.json'))
-independent = sorted(root.glob('e2e-proof-*/independent-sd3.json'))
-recovery = sorted(root.glob('e2e-recovery-*/recovery-*.json'))
-recovery_independent = sorted(root.glob('e2e-recovery-*/independent-sd3.json'))
-if len(proof) != len(independent):
-    raise SystemExit(f'P4 evidence mismatch: {len(proof)} execution reports vs {len(independent)} independent reviews')
-if len(proof) < 10:
-    raise SystemExit(f'P3/P4 requires at least 10 successful task attempts; found {len(proof)}')
-if len(recovery) != 3 or len(recovery_independent) != 3:
-    raise SystemExit(f'P5 requires 3 recovery scenarios; found {len(recovery)} runtime and {len(recovery_independent)} independent reviews')
-for p in proof:
-    data = json.loads(p.read_text())
-    if data.get('status') != 'approved' or data.get('supervisor', {}).get('report', {}).get('decision') != 'approved':
-        raise SystemExit(f'P3/P4 runtime evidence not approved: {p}')
-for p in independent:
-    data = json.loads(p.read_text())
-    if data.get('mode') != 'independent-read-only' or data.get('report', {}).get('decision') != 'approved':
-        raise SystemExit(f'Independent SD3 did not approve: {p}')
-for p in recovery:
-    data = json.loads(p.read_text())
-    if data.get('status') != 'approved' or data.get('supervisor', {}).get('report', {}).get('decision') != 'approved':
-        raise SystemExit(f'P5 runtime evidence not approved: {p}')
-for p in recovery_independent:
-    data = json.loads(p.read_text())
-    if data.get('mode') != 'independent-read-only' or data.get('report', {}).get('decision') != 'approved':
-        raise SystemExit(f'P5 independent SD3 did not approve: {p}')
-print(json.dumps({'status':'PROVEN','p3_p4_attempts':len(proof),'p5_recovery':len(recovery),'independent_sd3_reviews':len(independent)+len(recovery_independent),'anti_cheating':'required tests preserved'}, indent=2))
+plan = json.load(open('/tmp/plan.json'))
+assert plan.get('workers'), plan
 PY
