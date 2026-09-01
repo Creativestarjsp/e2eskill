@@ -11,11 +11,11 @@ def _write(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def persist_run(root: str | Path, execution: dict[str, Any], evaluation: dict[str, Any] | None = None, introspection: dict[str, Any] | None = None) -> str:
+def persist_run(root: str | Path, execution: dict[str, Any], evaluation: dict[str, Any] | None = None, introspection: dict[str, Any] | None = None, intelligence: dict[str, Any] | None = None) -> str:
     root = Path(root).resolve()
     run_id = str(execution.get("report_path", "")).rsplit("/", 1)[-1].removesuffix(".json") or str(int(time.time() * 1000))
     run_dir = root / ".e2e" / "runs" / run_id
-    _write(run_dir / "plan.json", {"task": execution.get("task"), "runtime": execution.get("runtime"), "mode": execution.get("mode"), "max_workers": execution.get("max_workers")})
+    _write(run_dir / "plan.json", {"task": execution.get("task"), "runtime": execution.get("runtime"), "mode": execution.get("mode"), "max_workers": execution.get("max_workers"), "intelligence_preflight": execution.get("intelligence_preflight")})
     _write(run_dir / "execution.json", execution)
     for worker in execution.get("workers", []):
         worker_id = str(worker.get("id", "unknown"))
@@ -34,12 +34,15 @@ def persist_run(root: str | Path, execution: dict[str, Any], evaluation: dict[st
         _write(run_dir / "evaluation.json", evaluation)
     if introspection is not None:
         _write(run_dir / "introspection.json", introspection)
+    if intelligence is not None:
+        _write(run_dir / "intelligence.json", intelligence)
     final = {
         "status": execution.get("status"),
         "task": execution.get("task"),
         "runtime": execution.get("runtime"),
         "evaluation_blocking": bool(evaluation and evaluation.get("blocking")),
         "failure_class": introspection.get("failure_class") if introspection else None,
+        "readiness": intelligence.get("readiness") if intelligence else "unknown",
     }
     _write(run_dir / "final.json", final)
     return run_dir.relative_to(root).as_posix()
