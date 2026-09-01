@@ -1,0 +1,23 @@
+{
+  "id": "smoke",
+  "version": "1",
+  "description": "Deterministic runtime smoke checks for E2E.",
+  "cases": [
+    {
+      "id": "cli-help",
+      "command": ["python", "-m", "e2e", "--help"],
+      "graders": [
+        {"type": "exit-code", "expected": 0},
+        {"type": "contains", "text": "E2E engineering runtime"}
+      ]
+    },
+    {
+      "id": "status-command",
+      "command": ["python", "-m", "e2e", "status"],
+      "graders": [
+        {"type": "exit-code", "expected": 0},
+        {"type": "contains", "text": "brain"}
+      ]
+    }
+  ]
+}
