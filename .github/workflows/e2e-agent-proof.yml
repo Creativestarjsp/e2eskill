@@ -1,0 +1,179 @@
+name: E2E Real Agent Proof
+
+# Cost-bearing proof campaign. Agents only modify disposable fixtures.
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: Independent attempts per task family
+        required: true
+        default: '2'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  task-proof:
+    name: P3-P4 • ${{ matrix.family }} • attempt ${{ matrix.attempt }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
+        attempt: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install E2E
+        run: python -m pip install -e . pytest
+      - name: Prepare Claude Code runtime
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Do not modify repository files. Verify Claude Code is available and respond READY.
+      - name: Create disposable proof fixture
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/e2e-proof && git clone --no-local "$GITHUB_WORKSPACE" /tmp/e2e-proof
+          cd /tmp/e2e-proof
+          mkdir proof_fixture
+          case "$FAMILY" in
+            api-backend)
+              printf '%s\n' 'def calculate_total(items):' '    return sum(i["price"] * i["quantity"] for i in items)' > proof_fixture/service.py
+              printf '%s\n' 'from service import calculate_total' 'def test_total(): assert calculate_total([{"price":10,"quantity":2}]) == 20' > proof_fixture/test_service.py ;;
+            database-mongoose)
+              printf '%s\n' '{"name":"proof","private":true,"dependencies":{"mongoose":"^9.0.0"}}' > proof_fixture/package.json
+              printf '%s\n' "const mongoose=require('mongoose');" 'const UserSchema=new mongoose.Schema({email:{type:String,required:true,unique:true},displayName:{type:String,required:true}});' 'module.exports=mongoose.model("User",UserSchema);' > proof_fixture/user.js
+              printf '%s\n' "const assert=require('node:assert/strict');" "const User=require('./user');" "assert.equal(new User({email:'a@b.com',displayName:'A'}).validateSync(),undefined);" "assert.throws(()=>new User({displayName:'A'}).validateSync());" > proof_fixture/test_user.js ;;
+            frontend-ui)
+              printf '%s\n' '<!doctype html><button id="increment" type="button">Count: <span id="count">0</span></button>' > proof_fixture/index.html
+              printf '%s\n' 'from pathlib import Path' 'def test_ui_contract():' '    h=Path("proof_fixture/index.html").read_text()' '    assert "id=\"increment\"" in h and "id=\"count\"" in h' > proof_fixture/test_ui.py ;;
+            authentication-security)
+              printf '%s\n' 'import hashlib' 'def fingerprint(token):' '    return hashlib.sha256(token.encode()).hexdigest()' > proof_fixture/auth.py
+              printf '%s\n' 'from auth import fingerprint' 'def test_secret_not_returned():' '    assert fingerprint("secret") != "secret"' > proof_fixture/test_auth.py ;;
+            regression-repair)
+              printf '%s\n' 'def subtotal(items):' '    return sum(i["price"] * i["quantity"] for i in items)' > proof_fixture/cart.py
+              printf '%s\n' 'from cart import subtotal' 'def test_regression():' '    assert subtotal([{"price":10,"quantity":2},{"price":5,"quantity":1}]) == 25' > proof_fixture/test_cart.py
+              sed -i 's/i\["price"\] \* i\["quantity"\]/i["price"] + i["quantity"]/' proof_fixture/cart.py ;;
+          esac
+      - name: Install Mongoose dependency
+        if: matrix.family == 'database-mongoose'
+        working-directory: /tmp/e2e-proof/proof_fixture
+        run: npm install --no-audit --no-fund
+      - name: Execute SD1 and require SD3 verification
+        working-directory: /tmp/e2e-proof
+        env:
+          FAMILY: ${{ matrix.family }}
+          ATTEMPT: ${{ matrix.attempt }}
+        run: |
+          case "$FAMILY" in
+            api-backend) TASK='Implement discount-aware calculate_total in proof_fixture/service.py and focused tests.' ;;
+            database-mongoose) TASK='Improve proof_fixture/user.js with production-quality Mongoose validation/options and focused tests.' ;;
+            frontend-ui) TASK='Implement interactive count increment behavior in proof_fixture/index.html and verify it.' ;;
+            authentication-security) TASK='Harden proof_fixture/auth.py with safe token verification and wrong-token security tests.' ;;
+            regression-repair) TASK='Diagnose and repair the intentional subtotal regression without weakening the test.' ;;
+          esac
+          python -m e2e execute "$TASK Run all fixture tests and have SD3 independently verify correctness, scope, security where relevant, and evidence. Do not modify the E2E harness or weaken/delete tests; changes must stay in proof_fixture." --runtime claude-code --execute --max-workers 2 | tee ".proof-${FAMILY}-${ATTEMPT}.json"
+      - name: Run fixture verification
+        working-directory: /tmp/e2e-proof
+        run: |
+          set -euo pipefail
+          if [ '${{ matrix.family }}' = 'database-mongoose' ]; then node proof_fixture/test_user.js; else python -m pytest proof_fixture -q; fi
+          git diff --check
+      - name: Upload P3-P4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-proof-${{ matrix.family }}-${{ matrix.attempt }}
+          path: |
+            /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
+            /tmp/e2e-proof/.e2e
+            /tmp/e2e-proof/proof_fixture
+          if-no-files-found: warn
+
+  recovery-proof:
+    name: P5 • ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [test-failure, integration-failure, verification-failure]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install E2E
+        run: python -m pip install -e . pytest
+      - name: Prepare Claude Code runtime
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Do not modify repository files. Verify Claude Code is available and respond READY.
+      - name: Create distinct recovery failure
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/e2e-recovery && git clone --no-local "$GITHUB_WORKSPACE" /tmp/e2e-recovery
+          cd /tmp/e2e-recovery && mkdir recovery_fixture
+          case "$SCENARIO" in
+            test-failure)
+              printf '%s\n' 'def add(a,b): return a-b' > recovery_fixture/calculator.py
+              printf '%s\n' 'from calculator import add' 'def test_add(): assert add(2,3)==5' > recovery_fixture/test_calculator.py
+              ;;
+            integration-failure)
+              printf '%s\n' 'def create_user(name): return {"name": name}' > recovery_fixture/provider.py
+              printf '%s\n' 'from provider import create_user' 'def consume_user(): return create_user("proof")["display_name"]' > recovery_fixture/consumer.py
+              printf '%s\n' 'from consumer import consume_user' 'def test_contract(): assert consume_user()=="proof"' > recovery_fixture/test_contract.py
+              ;;
+            verification-failure)
+              printf '%s\n' 'import hashlib' 'def password_digest(password): return hashlib.sha256(password.encode()).hexdigest()' > recovery_fixture/security.py
+              printf '%s\n' 'from security import password_digest' 'def test_security_evidence():' '    digest=password_digest("secret")' '    assert digest != "secret"' '    assert len(digest)==64' > recovery_fixture/test_security.py
+              printf '%s\n' 'Verification requirement: the repair must preserve the non-secret digest and demonstrate an explicit wrong-input check.' > recovery_fixture/VERIFICATION.md
+              ;;
+          esac
+      - name: Prove the intended failure exists
+        working-directory: /tmp/e2e-recovery
+        run: |
+          set +e
+          case '${{ matrix.scenario }}' in
+            integration-failure) python -m pytest recovery_fixture/test_contract.py -q > pre.txt 2>&1;;
+            *) python -m pytest recovery_fixture -q > pre.txt 2>&1;;
+          esac
+          code=$?
+          set -e
+          test "$code" -ne 0
+      - name: Diagnose repair and independently verify recovery
+        working-directory: /tmp/e2e-recovery
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          python -m e2e execute "Recover from the distinct $SCENARIO failure in recovery_fixture. Diagnose the root cause, repair it without weakening or deleting tests, run the complete relevant tests, and have SD3 independently verify that the original failure was detected, genuinely repaired, and re-verified. For verification-failure, also satisfy the explicit requirement in VERIFICATION.md. Do not modify the E2E harness." --runtime claude-code --execute --max-workers 2 | tee "recovery-$SCENARIO.json"
+          case "$SCENARIO" in
+            integration-failure) python -m pytest recovery_fixture/test_contract.py -q ;;
+            *) python -m pytest recovery_fixture -q ;;
+          esac
+          if [ "$SCENARIO" = test-failure ]; then grep -q 'return a+b' recovery_fixture/calculator.py; fi
+          if [ "$SCENARIO" = integration-failure ]; then grep -q 'display_name' recovery_fixture/provider.py; fi
+      - name: Upload P5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-recovery-${{ matrix.scenario }}
+          path: |
+            /tmp/e2e-recovery/recovery-${{ matrix.scenario }}.json
+            /tmp/e2e-recovery/pre.txt
+            /tmp/e2e-recovery/.e2e
+            /tmp/e2e-recovery/recovery_fixture
+          if-no-files-found: warn
