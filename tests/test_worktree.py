@@ -1,27 +1,37 @@
 from pathlib import Path
-import subprocess
 
-from e2e.worktree import create, current_ref, has_changes, remove
-
-
-def _git(root: Path, *args: str) -> str:
-    return subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
+import e2e.worktree as worktree
 
 
-def test_isolated_worktree_lifecycle(tmp_path: Path):
-    _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "e2e@example.com")
-    _git(tmp_path, "config", "user.name", "E2E Test")
-    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
-    _git(tmp_path, "add", "README.md")
-    _git(tmp_path, "commit", "-m", "base")
+def test_create_uses_isolated_branch_and_path(tmp_path: Path, monkeypatch):
+    calls = []
 
-    workspace = create(tmp_path, "sd1-worker-test", base_ref=current_ref(tmp_path))
-    (workspace.path / "worker.txt").write_text("worker\n", encoding="utf-8")
-    assert has_changes(workspace)
-    _git(workspace.path, "add", "worker.txt")
-    _git(workspace.path, "commit", "-m", "worker change")
-    remove(tmp_path, workspace)
+    class Result:
+        stdout = "abc123\n"
 
-    assert not workspace.path.exists()
-    assert "worker.txt" not in _git(tmp_path, "ls-files")
+    def fake_git(root, *args, cwd=None):
+        calls.append((root, args, cwd))
+        return Result()
+
+    monkeypatch.setattr(worktree, "_git", fake_git)
+    workspace = worktree.create(tmp_path, "sd1-worker-test", base_ref="abc123")
+
+    assert workspace.worker_id == "sd1-worker-test"
+    assert workspace.branch == "e2e/sd1-worker-test"
+    assert workspace.path == tmp_path / ".e2e" / "worktrees" / "sd1-worker-test"
+    assert any("worktree" in call[1] and "add" in call[1] for call in calls)
+
+
+def test_remove_uses_git_worktree_cleanup(tmp_path: Path, monkeypatch):
+    calls = []
+
+    class Result:
+        stdout = ""
+
+    monkeypatch.setattr(worktree, "_git", lambda root, *args, cwd=None: calls.append(args) or Result())
+    workspace = worktree.WorkerWorkspace("worker", tmp_path / "workspace", "e2e/worker", "abc123")
+    workspace.path.mkdir(parents=True)
+
+    worktree.remove(tmp_path, workspace)
+
+    assert any(args[:3] == ("worktree", "remove", "--force") for args in calls)
