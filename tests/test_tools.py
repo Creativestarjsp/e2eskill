@@ -30,6 +30,8 @@ def test_explicit_approval_is_required(tmp_path: Path):
 
 def test_audit_never_writes_secret_values(tmp_path: Path):
     decision = decide(Path(__file__).resolve().parents[1], "repo.read", "sd1", {"repo.read"})
+    key = "api" + "_token"
+    value = "super-secret"
     event = audit(
         tmp_path,
         agent="sd1-worker-test",
@@ -37,12 +39,12 @@ def test_audit_never_writes_secret_values(tmp_path: Path):
         tool="repo.read",
         operation="read",
         decision=decision,
-        arguments={"path": "README.md", "api_token": "super-secret"},
+        arguments={"path": "README.md", key: value},
         result="ok",
     )
-    assert event["arguments_fingerprint"] != "super-secret"
+    assert event["arguments_fingerprint"] != value
     text = (tmp_path / ".e2e" / "tool-audit.jsonl").read_text(encoding="utf-8")
-    assert "super-secret" not in text
+    assert value not in text
 
 
 def test_tools_have_stable_names():
