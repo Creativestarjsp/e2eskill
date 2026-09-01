@@ -77,7 +77,8 @@ PY
         with: {python-version: '3.11', cache: pip}
       - run: python -m pip install -e . pytest
       - name: Build disposable fixture
-        env: {FAMILY: ${{ matrix.family }}}
+        env:
+          FAMILY: ${{ matrix.family }}
         run: |
           set -euo pipefail
           rm -rf /tmp/e2e-proof
@@ -169,7 +170,8 @@ NODE
           python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", os.environ["REVIEW_TASK"], "claude-code", os.environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
       - name: Verify fixture and proof decisions
         working-directory: /tmp/e2e-proof
-        env: {MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof}
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof
         run: |
           set -euo pipefail
           if [ '${{ matrix.family }}' = database-mongoose ]; then node proof_fixture/test_user.js; elif [ '${{ matrix.family }}' = frontend-ui ]; then node proof_fixture/test_ui.js; else python -m pytest proof_fixture -q; fi
@@ -207,7 +209,8 @@ PY
         with: {python-version: '3.11', cache: pip}
       - run: python -m pip install -e . pytest
       - name: Create distinct failure
-        env: {SCENARIO: ${{ matrix.scenario }}}
+        env:
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           set -euo pipefail
           rm -rf /tmp/e2e-recovery
@@ -229,13 +232,15 @@ PY
           test "$code" -ne 0
       - name: P5 SD1 diagnosis and repair
         working-directory: /tmp/e2e-recovery
-        env: {SCENARIO: ${{ matrix.scenario }}}
+        env:
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           python -m e2e execute "Recover from the distinct $SCENARIO failure in recovery_fixture. Diagnose the root cause, repair it without weakening/deleting tests, run relevant tests, and leave the fixture in a verified state. For verification-failure, add verify_password to recovery_fixture/security.py with constant-time digest comparison; do not modify verify.py or the test. Do not modify the E2E harness." --runtime claude-code --execute --max-workers 2 > recovery-$SCENARIO.json
           if [ "$SCENARIO" = verification-failure ]; then python -m pytest recovery_fixture -q; python -c 'from recovery_fixture.security import password_digest,verify_password; assert verify_password("secret",password_digest("secret"))'; else python -m pytest recovery_fixture -q; fi
       - name: P5 independent SD3 verification
         working-directory: /tmp/e2e-recovery
-        env: {SCENARIO: ${{ matrix.scenario }}}
+        env:
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", "Independently verify recovery of the "+os.environ["SCENARIO"]+" failure. Inspect root cause, repair, tests and evidence; do not mutate.", "claude-code", "recovery-"+os.environ["SCENARIO"]+".json"); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
       - uses: actions/upload-artifact@v4
