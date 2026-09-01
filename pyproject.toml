@@ -19,5 +19,8 @@ codebrain = [
 [project.scripts]
 e2e = "e2e.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["e2e*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
