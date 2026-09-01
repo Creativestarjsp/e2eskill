@@ -4,9 +4,9 @@
 Implement production-grade MongoDB persistence with Mongoose while keeping database-specific behavior isolated, testable, observable, and compatible with the application's persistence boundary.
 
 ## Use When
-Use for Mongoose schemas/models, validation, indexes, middleware, populate, discriminators, query design, transactions, MongoDB-specific persistence, and Mongoose migrations or compatibility work.
+Use for Mongoose schemas/models, validation, indexes, middleware, populate, discriminators, query design, transactions, MongoDB-specific persistence, and Mongoose compatibility work.
 
-Mongoose provides schemas, models, validation, middleware, indexes, transactions, and other MongoDB integration capabilities; use the current project-supported Mongoose version rather than assuming API behavior from older versions. citeturn0search0turn0search2
+Mongoose provides schemas, models, validation, middleware, indexes, transactions, and other MongoDB integration capabilities. Use the current project-supported Mongoose version rather than assuming API behavior from older versions.
 
 ## Inputs
 
@@ -54,7 +54,7 @@ INSPECT → MODEL → SCHEMA → ADAPTER → INDEX → TEST → INTEGRATE → VE
 5. Keep Mongoose documents/models inside the persistence adapter when a database abstraction exists.
 6. Use `lean()` deliberately for read paths that do not require hydrated documents.
 7. Use populate, aggregation, discriminators, middleware, and plugins only when they solve a concrete requirement and their operational cost is understood.
-8. Make transaction/session boundaries explicit for multi-document atomic workflows. Mongoose supports session-based transactions and transaction helpers. citeturn0search11
+8. Make transaction/session boundaries explicit for multi-document atomic workflows.
 9. Test schema validation, queries, indexes, serialization, failure behavior, and transaction semantics against MongoDB where behavior cannot be faithfully mocked.
 10. Verify application compatibility and regression impact before integration.
 
@@ -67,7 +67,7 @@ INSPECT → MODEL → SCHEMA → ADAPTER → INDEX → TEST → INTEGRATE → VE
 - Choose embedding vs referencing based on read/write patterns, consistency, and cardinality.
 - Make optionality and defaults intentional.
 - Review `ObjectId` references and populate behavior for authorization and performance implications.
-- Disable automatic production index creation when the project's operational policy requires controlled index deployment. Mongoose documents `autoIndex` as configurable and notes that automatic index creation can create production load. citeturn0search2
+- Disable automatic production index creation when the project's operational policy requires controlled index deployment.
 
 ## Query Rules
 
