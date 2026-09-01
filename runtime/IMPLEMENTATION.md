@@ -38,8 +38,6 @@ The executor never silently turns a dry-run into execution. Worker output is cap
 
 The current executor processes dependency-ready workers safely within the SD2 worker bound. It does not claim simultaneous repository editing is safe; true parallel mutation should be added only with isolated worktrees or another conflict-safe workspace strategy.
 
-Claude Code's CLI supports non-interactive print mode and JSON output, which makes it suitable for a scripted adapter. citeturn1search0
-
 ## Commands
 
 ```bash
