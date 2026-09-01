@@ -9,6 +9,7 @@ from .adapters import capabilities, detect
 from .benchmark import run_case
 from .brain import CodeBrain
 from .context import build_context
+from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
 from .verify import verify
@@ -27,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("skill"); ss = s.add_subparsers(dest="skill_cmd", required=True); ss.add_parser("list"); si = ss.add_parser("inspect"); si.add_argument("name")
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
     r = sub.add_parser("run"); r.add_argument("task")
+    o = sub.add_parser("orchestrate"); o.add_argument("task")
     v = sub.add_parser("verify"); v.add_argument("--test", dest="test_command")
     be = sub.add_parser("benchmark"); be.add_argument("command"); be.add_argument("--repetitions", type=int, default=1)
     args = p.parse_args(argv)
@@ -53,8 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.brain_cmd == "map": print(json.dumps(brain.map(args.path), indent=2)); return 0
         if args.brain_cmd == "search": print(json.dumps(brain.search(args.query), indent=2)); return 0
         if args.brain_cmd == "impact": print(json.dumps(brain.impact(args.target), indent=2)); return 0
-    if args.cmd == "run":
-        brain = CodeBrain(root); brain.build(); print(json.dumps({"task":args.task,"context":build_context(root,args.task,brain),"skills":match(root,args.task),"next":"SD2 should decompose and assign SD1 workers."}, indent=2)); return 0
+    if args.cmd in {"run", "orchestrate"}:
+        result = write_plan(root, args.task)
+        print(json.dumps(result, indent=2)); return 0
     if args.cmd == "verify":
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "benchmark":
