@@ -16,6 +16,7 @@ from .introspection import diagnose
 from .memory import Memory
 from .orchestrator import write_plan
 from .release import release_check
+from .run_artifacts import persist_run
 from .runtime_contract import contract, parity
 from .skills import discover, match
 from .tool_gateway import serve, write_mcp_configs
@@ -107,6 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         result = write_plan(root, args.task); print(json.dumps(result, indent=2)); return 0
     if args.cmd == "execute":
         result = execute(root, args.task, runtime=args.runtime, execute_agents=args.execute_agents, max_workers=max(1, min(args.max_workers, 4)))
+        if args.execute_agents:
+            evaluation = evaluate_run(root, args.task, result.get("workers", []))
+            introspection = diagnose(root, result)
+            result["evaluation"] = evaluation
+            result["introspection"] = introspection
+            result["run_artifacts"] = persist_run(root, result, evaluation, introspection)
         print(json.dumps(result, indent=2)); return 0 if result["status"] in SUCCESS_EXECUTION_STATUSES else 1
     if args.cmd == "verify":
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
