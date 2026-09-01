@@ -4,9 +4,13 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .tools import check_registry, load_tools
+
 
 def capabilities(root: str | Path = ".") -> dict[str, Any]:
     root = Path(root).resolve()
+    tools = load_tools(root)
+    transports = sorted({tool.transport for tool in tools})
     return {
         "terminal": True,
         "filesystem": True,
@@ -14,7 +18,9 @@ def capabilities(root: str | Path = ".") -> dict[str, Any]:
         "python": shutil.which("python3") is not None or shutil.which("python") is not None,
         "browser_visible": False,
         "browser_headless": False,
-        "mcp": False,
+        "mcp": "mcp" in transports,
+        "registered_tools": len(tools),
+        "tool_registry": check_registry(root),
         "subagents": shutil.which("claude") is not None or shutil.which("codex") is not None,
         "hooks": True,
         "agent_runtimes": {
