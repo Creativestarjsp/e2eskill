@@ -17,4 +17,5 @@ jobs:
       - run: python -m e2e brain build
       - run: python -m e2e brain check
       - run: python -m e2e guardrails check --stage verification
+      - run: python -m e2e eval-suite run evals/smoke.json
       - run: python -m e2e status
