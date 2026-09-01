@@ -1,0 +1,27 @@
+profiles:
+  lite:
+    context: task+repository
+    codebrain: targeted
+    verification: standard
+    memory: decisions-only
+    hooks: safety+verification
+
+  standard:
+    context: project+repository+task+code+historical
+    codebrain: targeted
+    verification: full
+    memory: decisions+failures+patterns
+    hooks: all
+
+  strict:
+    context: all-applicable
+    codebrain: required
+    verification: full+impact+security
+    memory: all
+    hooks: all+release
+    approval: sd3
+
+selection:
+  default: standard
+  use_lite_for: [small-local-change, documentation-only]
+  use_strict_for: [security-sensitive, destructive, production-release, migration, auth]
