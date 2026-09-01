@@ -1,0 +1,28 @@
+gates:
+  requirements:
+    required: true
+    evidence: acceptance-criteria-trace
+  implementation:
+    required: true
+    evidence: diff-and-files
+  tests:
+    required: true
+    evidence: executed-results
+  security:
+    required_for: [auth, payments, secrets, data-access, destructive-ops]
+    evidence: security-checks
+  browser:
+    required_for: [ui, web-flow, browser-task]
+    evidence: headed-or-ci-run-record
+  impact:
+    required_for: [shared-library, api-contract, schema, auth, dependency-change]
+    evidence: codebrain-impact-report
+  supervisor:
+    required: true
+    actor: sd3
+    independence: separate-review-pass
+
+approval:
+  pass_conditions: all-required-gates-pass
+  block_conditions: any-required-gate-fails
+  override: explicit-sd3-with-recorded-risk
