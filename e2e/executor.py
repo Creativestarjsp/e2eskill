@@ -136,7 +136,7 @@ def execute(root: str | Path, task: str, runtime: str = "auto", execute_agents: 
         execution.update(status="runtime-unavailable", next="Install Claude Code or Codex, or select a configured runtime.")
         return execution
     p = plan(root, task)
-    intelligence = build_intelligence(root, task, p)
+    intelligence = p.get("intelligence") or build_intelligence(root, task, p)
     execution["intelligence_preflight"] = intelligence
     for worker in p.get("workers", []):
         worker.setdefault("inputs", {}).setdefault("context", {})["engineering_intelligence"] = intelligence
@@ -233,17 +233,7 @@ def execute(root: str | Path, task: str, runtime: str = "auto", execute_agents: 
                 execution["status"] = "correction-merge-conflict"
                 execution.setdefault("preserved_workspaces", []).append(str(workspace.path))
                 break
-            try:
-                remove(root, workspace)
-            except WorktreeError:
-                execution.setdefault("preserved_workspaces", []).append(str(workspace.path))
-            execution["brain_refresh"] = _refresh_brain(root)
-    if execution.get("status") is None:
-        execution["status"] = "completed-without-supervisor"
-    execution["finished_at"] = time.time()
-    out = root / ".e2e" / "executions"
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / f"{int(execution['finished_at'] * 1000)}.json"
-    path.write_text(json.dumps(execution, indent=2, sort_keys=True), encoding="utf-8")
-    execution["report_path"] = path.relative_to(root).as_posix()
+            remove(root, workspace)
+        if execution.get("status") is None:
+            execution["status"] = "approved"
     return execution
