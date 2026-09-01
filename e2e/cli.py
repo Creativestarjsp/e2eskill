@@ -14,7 +14,7 @@ from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
 from .tool_gateway import serve, write_mcp_configs
-from .tools import check_registry, load_tools, policy_for_role, write_policy
+from .tools import check_registry, load_tools, policy_for_role
 from .verify import verify
 
 
