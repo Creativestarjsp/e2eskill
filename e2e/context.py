@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
-PRECEDENCE = ["safety", "repository", "path", "project", "skill", "task", "local"]
+from .memory import Memory
+
+PRECEDENCE = ["safety", "repository", "path", "project", "skill", "task", "local", "memory"]
 SOURCE_DOCS = ["BRD.md", "PRD.md", "CLAUDE.md", "AGENTS.md", "CONVENTIONS.md", "E2E-PLAN.md", "SD-AGENT-SYSTEM.md"]
 
 
@@ -30,7 +31,6 @@ def resolve_rules(root: str | Path = ".") -> dict[str, Any]:
 
 def build_context(root: str | Path, task: str, brain: Any | None = None, max_chars: int = 30000) -> dict[str, Any]:
     root = Path(root).resolve()
-    rules = resolve_rules(root)
     package: dict[str, Any] = {
         "objective": task,
         "requirements": [],
@@ -39,12 +39,13 @@ def build_context(root: str | Path, task: str, brain: Any | None = None, max_cha
         "relevant_symbols": [],
         "dependencies": [],
         "tests": [],
-        "rules": rules,
+        "rules": resolve_rules(root),
         "skills": [],
         "known_risks": [],
         "assumptions": [],
         "unknowns": [],
         "verification": [],
+        "memory": [],
         "sources": [],
     }
     for name in SOURCE_DOCS:
@@ -57,8 +58,13 @@ def build_context(root: str | Path, task: str, brain: Any | None = None, max_cha
         package["relevant_symbols"] = cb["relevant_symbols"]
         package["tests"] = cb["tests"]
         package["sources"].append({"codebrain": cb["provenance"]})
+    try:
+        package["memory"] = Memory(root).search(task, limit=8)
+    except ValueError:
+        package["unknowns"].append("Persistent memory could not be loaded safely; execution must not rely on memory.")
     blob = json.dumps(package, ensure_ascii=False)
     if len(blob) > max_chars:
         package["sources"] = package["sources"][:4]
-        package["unknowns"].append("Context package was bounded; some source excerpts were omitted.")
+        package["memory"] = package["memory"][:4]
+        package["unknowns"].append("Context package was bounded; some source excerpts or memories were omitted.")
     return package
