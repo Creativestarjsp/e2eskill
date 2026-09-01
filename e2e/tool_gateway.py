@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -53,7 +54,7 @@ def _shell_read(root: Path, arguments: JSON) -> JSON:
     allowed = {"pwd", "git status --short --branch", "git diff --stat", "git branch --show-current", "python -m pytest -q"}
     if command not in allowed:
         raise ToolGatewayError("command-not-allowlisted")
-    proc = subprocess.run(command, cwd=root, shell=True, text=True, capture_output=True, timeout=120)
+    proc = subprocess.run(shlex.split(command), cwd=root, text=True, capture_output=True, timeout=120)
     return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
@@ -130,7 +131,7 @@ def handle(root: Path, role: str, request: JSON) -> JSON | None:
         value = handler(root, arguments)
         audit(root, agent=f"mcp:{role}", runtime="mcp", tool=name, operation="call", decision=decision, arguments=arguments, result="success")
         return _response(request_id, {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}], "structuredContent": value})
-    except (ToolGatewayError, OSError, ValueError) as exc:
+    except (ToolGatewayError, OSError, ValueError, UnicodeError) as exc:
         audit(root, agent=f"mcp:{role}", runtime="mcp", tool=name, operation="call", decision=decision, arguments=arguments, result=str(exc))
         return _response(request_id, error={"code": -32005, "message": str(exc)})
 
