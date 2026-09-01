@@ -8,7 +8,7 @@ from typing import Any
 
 from .brain import CodeBrain
 from .context import build_context
-from .skills import match
+from .skills import discover, match
 
 MAX_ACTIVE_WORKERS = 4
 
@@ -28,7 +28,14 @@ def _phase(skill: str) -> str:
         return "verification"
     if "devops" in name:
         return "delivery"
+    if name in {"research-first-engineering", "agent-introspection-debugging"}:
+        return "foundation"
     return "implementation"
+
+
+def _needs_research(task: str) -> bool:
+    terms = {"add", "build", "create", "implement", "integrate", "replace", "refactor", "design", "new"}
+    return any(term in task.lower().split() for term in terms)
 
 
 def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[str, Any]:
@@ -38,6 +45,10 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         brain.build()
     context = build_context(root, task, brain)
     matched = match(root, task)
+    if _needs_research(task):
+        research = next((s for s in discover(root) if s["name"] == "research-first-engineering"), None)
+        if research and research["name"] not in {s["name"] for s in matched}:
+            matched.insert(0, research)
     if not matched:
         matched = [{"name": "software-architect", "path": "skills/software-architect/SKILL.md", "purpose": "Clarify architecture and implementation boundaries.", "triggers": "ambiguous engineering tasks"}]
 
@@ -72,18 +83,9 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         "max_active_workers": MAX_ACTIVE_WORKERS,
         "context": context,
         "workers": workers,
-        "supervisor_gate": {
-            "role": "SD3",
-            "required": True,
-            "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence"],
-            "decision": "pending-runtime-agent-review",
-        },
-        "policy": {
-            "parallelize": True,
-            "do_not_exceed_worker_limit": True,
-            "no_blind_retries": True,
-            "escalate_architectural_blockers": True,
-        },
+        "preflight": {"research_first": _needs_research(task), "rule": "research before custom implementation when existing solutions may exist"},
+        "supervisor_gate": {"role": "SD3", "required": True, "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence", "agent-evaluation"], "decision": "pending-runtime-agent-review"},
+        "policy": {"parallelize": True, "do_not_exceed_worker_limit": True, "no_blind_retries": True, "escalate_architectural_blockers": True, "evaluate_non_trivial_runs": True},
     }
 
 
