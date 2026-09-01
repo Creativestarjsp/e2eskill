@@ -56,7 +56,7 @@ PY
           name: e2e-p0-p2
           path: /tmp/plan.json
 
-  proof-matrix:
+  proof_matrix:
     name: Build proof matrix
     runs-on: ubuntu-latest
     outputs:
@@ -79,7 +79,7 @@ PY
 
   task-proof:
     name: P3-P4 • ${{ matrix.family }} • attempt ${{ matrix.attempt }}
-    needs: [p0-p2, proof-matrix]
+    needs: [p0-p2, proof_matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -87,7 +87,7 @@ PY
       max-parallel: 2
       matrix:
         family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
-        attempt: ${{ fromJSON(needs.proof-matrix.outputs.attempts) }}
+        attempt: ${{ fromJSON(needs.proof_matrix.outputs.attempts) }}
     services:
       mongodb:
         image: mongo:8.0
