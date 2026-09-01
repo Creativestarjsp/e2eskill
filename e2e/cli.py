@@ -12,9 +12,10 @@ from .context import build_context
 from .evaluation import evaluate_run
 from .executor import execute
 from .guardrails import check as check_guardrails, policy as guardrail_policy, write_policy as write_guardrail_policy
+from .intelligence import build_intelligence, synthesize_run
 from .introspection import diagnose
 from .memory import Memory
-from .orchestrator import write_plan
+from .orchestrator import plan, write_plan
 from .release import release_check
 from .run_artifacts import persist_run
 from .runtime_contract import contract, parity
@@ -36,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("init", "doctor", "status", "release"):
         sub.add_parser(name)
     c = sub.add_parser("context"); c.add_argument("task")
+    intel = sub.add_parser("intelligence"); intel.add_argument("task")
     s = sub.add_parser("skill"); ss = s.add_subparsers(dest="skill_cmd", required=True); ss.add_parser("list"); si = ss.add_parser("inspect"); si.add_argument("name")
     t = sub.add_parser("tool"); ts = t.add_subparsers(dest="tool_cmd", required=True); ts.add_parser("list"); ts.add_parser("check"); ti = ts.add_parser("inspect"); ti.add_argument("name"); tp = ts.add_parser("policy"); tp.add_argument("role", choices=("sd1", "sd2", "sd3")); tg = ts.add_parser("gateway"); tg.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1"); tg.add_argument("--serve", action="store_true")
     g = sub.add_parser("guardrails"); gs = g.add_subparsers(dest="guardrail_cmd", required=True); gs.add_parser("policy"); gc = gs.add_parser("check"); gc.add_argument("--stage", choices=("pre-edit", "pre-commit", "pre-merge", "verification"), default="verification"); gs.add_parser("write")
@@ -61,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         brain = CodeBrain(root)
         if not brain.store.exists(): brain.build()
         print(json.dumps({"context": build_context(root, args.task, brain), "skills": match(root, args.task)}, indent=2)); return 0
+    if args.cmd == "intelligence":
+        result = build_intelligence(root, args.task, plan(root, args.task)); print(json.dumps(result, indent=2)); return 0
     if args.cmd == "skill":
         skills = discover(root)
         if args.skill_cmd == "list": print(json.dumps(skills, indent=2)); return 0
@@ -111,9 +115,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.execute_agents:
             evaluation = evaluate_run(root, args.task, result.get("workers", []))
             introspection = diagnose(root, result)
+            intelligence_result = synthesize_run(result, evaluation, introspection)
             result["evaluation"] = evaluation
             result["introspection"] = introspection
-            result["run_artifacts"] = persist_run(root, result, evaluation, introspection)
+            result["intelligence"] = intelligence_result
+            result["run_artifacts"] = persist_run(root, result, evaluation, introspection, intelligence_result)
         print(json.dumps(result, indent=2)); return 0 if result["status"] in SUCCESS_EXECUTION_STATUSES else 1
     if args.cmd == "verify":
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
