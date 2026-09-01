@@ -8,6 +8,7 @@ from typing import Any
 
 from .brain import CodeBrain
 from .context import build_context
+from .intelligence import build_intelligence
 from .skills import discover, match
 
 MAX_ACTIVE_WORKERS = 4
@@ -76,7 +77,7 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         else:
             worker["depends_on"] = []
 
-    return {
+    draft = {
         "plan_id": hashlib.sha1(f"{task}:{time.time_ns()}".encode()).hexdigest()[:12],
         "role": "SD2",
         "task": task,
@@ -87,6 +88,8 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         "supervisor_gate": {"role": "SD3", "required": True, "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence", "agent-evaluation"], "decision": "pending-runtime-agent-review"},
         "policy": {"parallelize": True, "do_not_exceed_worker_limit": True, "no_blind_retries": True, "escalate_architectural_blockers": True, "evaluate_non_trivial_runs": True},
     }
+    draft["intelligence"] = build_intelligence(root, task, draft)
+    return draft
 
 
 def write_plan(root: str | Path, task: str) -> dict[str, Any]:
