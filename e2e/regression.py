@@ -52,8 +52,11 @@ def find_regressions(root: str | Path, task: str, limit: int = 20) -> list[dict[
         if terms and not any(term in hay for term in terms):
             continue
         summary = item.get("summary", item.get("aggregate", {}))
-        failed = int(summary.get("failed", 0)) if isinstance(summary, dict) else 0
-        passed = int(summary.get("passed", summary.get("successes", 0))) if isinstance(summary, dict) else 0
+        if not isinstance(summary, dict):
+            continue
+        attempts = int(summary.get("attempts", 0))
+        passed = int(summary.get("passed", summary.get("successes", 0)))
+        failed = int(summary.get("failed", max(0, attempts - passed)))
         if failed:
             matches.append({"suite": item.get("suite", item.get("suite_id", item.get("id"))), "path": item["_path"], "failed": failed, "passed": passed, "signal": "historical-failure"})
     return matches
