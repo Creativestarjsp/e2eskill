@@ -30,6 +30,25 @@ SD3 Approval
 Memory / Reports
 ```
 
+## Executable Runtime
+
+E2E now includes an executable, dependency-light Python runtime under `e2e/`.
+
+```bash
+python -m e2e doctor
+python -m e2e status
+python -m e2e brain build
+python -m e2e brain search "authentication"
+python -m e2e brain impact AuthService
+python -m e2e context "add Google login"
+python -m e2e skill list
+python -m e2e verify --test "python -m pytest -q"
+python -m e2e benchmark "python -m pytest -q" --repetitions 5
+python -m e2e release
+```
+
+See `runtime/IMPLEMENTATION.md` for the implementation boundary and parser strategy.
+
 ## Existing Skills
 
 Existing skills are preserved and remain the canonical domain layer.
@@ -38,7 +57,7 @@ See `skills/` for the full library.
 
 ## System Architecture Documents
 
-- `E2E-PLAN.md` — master roadmap, architecture status, and definition of done
+- `E2E-PLAN.md` — master roadmap, phase status, and definition of done
 - `BRD.md` — business source of truth for E2E
 - `SD-AGENT-SYSTEM.md` — SD1/SD2/SD3 operating model
 - `architecture/CONTEXT-AND-RULES.md` — context loading and rule precedence
@@ -54,8 +73,6 @@ See `skills/` for the full library.
 - `architecture/MINIMALITY-AND-CORRECTNESS.md` — minimal implementation and safety standard
 
 ## Runtime Contracts
-
-The architecture is backed by concrete runtime-facing contracts:
 
 - `runtime/e2e-manifest.yaml` — system manifest
 - `runtime/profiles.yaml` — lite/standard/strict execution profiles
@@ -92,3 +109,7 @@ UNDERSTAND
 - Prefer deterministic guardrails for security and safety.
 - Never store secrets in skills, memory, or generated project context.
 - Escalate persistent or architectural failures instead of retrying forever.
+
+## Verification
+
+A GitHub Actions workflow runs the runtime tests and smoke checks. Real agentic benchmark claims still require configured Claude/Codex execution, a fixed task corpus, and independent SD3 evaluation.
