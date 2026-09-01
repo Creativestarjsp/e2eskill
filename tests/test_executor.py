@@ -31,4 +31,5 @@ def test_execute_dry_run_never_launches_agent(tmp_path: Path, monkeypatch):
 
 def test_runtime_command_shapes():
     assert _command("claude-code", "hello")[:4] == ["claude", "-p", "--output-format", "json"]
+    assert _command("claude-code", "hello", ".e2e/mcp/claude.json")[4:] == ["--mcp-config", ".e2e/mcp/claude.json", "--strict-mcp-config", "hello"]
     assert _command("codex", "hello")[0:2] == ["codex", "exec"]
