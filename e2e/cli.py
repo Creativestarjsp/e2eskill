@@ -10,6 +10,7 @@ from .benchmark import run_case
 from .brain import CodeBrain
 from .context import build_context
 from .evaluation import evaluate_run
+from .eval_harness import compare_baseline, load_suite, run_suite, command_runner
 from .executor import execute
 from .guardrails import check as check_guardrails, policy as guardrail_policy, write_policy as write_guardrail_policy
 from .intelligence import build_intelligence, synthesize_run
@@ -50,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("verify"); v.add_argument("--test", dest="test_command")
     be = sub.add_parser("benchmark"); be.add_argument("command"); be.add_argument("--repetitions", type=int, default=1)
     ev = sub.add_parser("evaluate"); ev.add_argument("task"); ev.add_argument("--reports", required=True, help="Path to a JSON file containing worker reports")
+    es = sub.add_parser("eval-suite"); ess = es.add_subparsers(dest="eval_cmd", required=True); er = ess.add_parser("run"); er.add_argument("suite"); eb = ess.add_parser("compare"); eb.add_argument("current"); eb.add_argument("baseline"); eb.add_argument("--min-pass-rate", type=float, default=0.0); eb.add_argument("--max-latency-regression", type=float, default=0.25)
     ins = sub.add_parser("introspect"); ins.add_argument("--run", required=True, help="Path to a JSON execution report")
     args = p.parse_args(argv)
     root = _root()
@@ -129,6 +131,14 @@ def main(argv: list[str] | None = None) -> int:
         reports = json.loads(Path(args.reports).read_text(encoding="utf-8"))
         if not isinstance(reports, list): return 1
         result = evaluate_run(root, args.task, reports); print(json.dumps(result, indent=2)); return 0 if not result["blocking"] else 1
+    if args.cmd == "eval-suite":
+        if args.eval_cmd == "run":
+            report = run_suite(root, load_suite(args.suite), command_runner)
+            print(json.dumps(report, indent=2)); return 0 if report["summary"]["pass_rate"] == 1 else 1
+        current = json.loads(Path(args.current).read_text(encoding="utf-8"))
+        baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        result = compare_baseline(current, baseline, args.min_pass_rate, args.max_latency_regression)
+        print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "introspect":
         run = json.loads(Path(args.run).read_text(encoding="utf-8"))
         result = diagnose(root, run); print(json.dumps(result, indent=2)); return 0
