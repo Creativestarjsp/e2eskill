@@ -27,6 +27,7 @@ E2E provides that engineering control plane.
 - **Guardrails** — enforce secret detection, protected paths, lifecycle checks, and evidence requirements.
 - **Runtime adapters** — provide a common engineering layer for Claude Code, Codex, and standalone execution.
 - **Run evidence** — persist plans, worker reports, verification, evaluation, introspection, and final outcomes.
+- **CI self-healing** — scheduled automation can inspect failed E2E Runtime results, repair the underlying defect with Claude, validate locally, and re-dispatch CI.
 
 ---
 
@@ -193,6 +194,20 @@ Verification can additionally incorporate:
 
 The system therefore avoids treating a single successful generation as proof that a change is production-ready.
 
+### CI Self-Healing
+
+The repository also contains a scheduled repair workflow:
+
+```text
+.github/workflows/e2e-self-heal.yml
+```
+
+It checks the latest `E2E Runtime` result, collects failed-run logs, asks Claude to diagnose and repair the underlying defect, runs local verification, commits only validated changes, and explicitly dispatches the runtime workflow again. The scheduler repeats on later runs if the runtime remains red.
+
+The repair loop does **not** weaken or delete tests and does not replace SD3 verification. It requires a Claude Actions secret such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`.
+
+See [`architecture/CI-SELF-HEAL.md`](architecture/CI-SELF-HEAL.md) for the operating contract.
+
 ---
 
 ## Quick Start
@@ -333,7 +348,7 @@ python -m pytest -q
 ├── templates/             # Reusable engineering templates
 ├── tests/                 # Runtime and system tests
 ├── .codex/                # Codex-specific agent configuration
-├── .github/workflows/     # Continuous integration
+├── .github/workflows/     # Continuous integration and self-healing
 ├── AGENTS.md              # Repository agent instructions
 ├── BRD.md                 # Business requirements / system source of truth
 ├── E2E-PLAN.md            # Master roadmap and implementation status
@@ -355,6 +370,7 @@ The repository includes specialist capabilities for areas such as:
 - React / React Native / Expo
 - API development
 - Database engineering
+- Mongoose / MongoDB persistence
 - Security engineering
 - QA engineering
 - DevOps
@@ -416,6 +432,7 @@ Runtime-specific behavior belongs in the runtime adapter layer rather than being
 - [`architecture/CODEBRAIN.md`](architecture/CODEBRAIN.md) — repository intelligence
 - [`architecture/REGRESSION-INTELLIGENCE.md`](architecture/REGRESSION-INTELLIGENCE.md) — regression-aware engineering planning
 - [`architecture/VERIFICATION.md`](architecture/VERIFICATION.md) — evidence and verification model
+- [`architecture/CI-SELF-HEAL.md`](architecture/CI-SELF-HEAL.md) — CI repair scheduler
 - [`architecture/RELEASE-GATES.md`](architecture/RELEASE-GATES.md) — release requirements
 
 ### Standards
