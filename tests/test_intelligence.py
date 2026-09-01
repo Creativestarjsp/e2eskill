@@ -16,6 +16,7 @@ def test_build_intelligence_creates_risk_and_verification_plan(tmp_path):
     assert result["research_first"] is True
     assert result["required_tests"]
     assert result["evidence_contract"]
+    assert result["regression"]["level"] == "low"
     assert result["advisory_only"] is True
     assert "independent SD3 review before approval" in result["verification_plan"]
     assert result["intelligence_fingerprint"]
@@ -24,9 +25,25 @@ def test_build_intelligence_creates_risk_and_verification_plan(tmp_path):
 def test_orchestrator_plan_contains_intelligence(tmp_path):
     result = plan(tmp_path, "add authentication API")
 
-    assert result["intelligence"]["schema_version"] == "2.0"
+    assert result["intelligence"]["schema_version"] == "2.1"
     assert result["intelligence"]["task"] == "add authentication API"
     assert result["intelligence"]["repository_impact"]["codebrain"]["revision"]
+    assert result["regression"]["level"] == "low"
+
+
+def test_orchestrator_escalates_workers_for_historical_regression(tmp_path):
+    eval_dir = tmp_path / ".e2e" / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "authentication.json").write_text(
+        '{"suite_id":"authentication","summary":{"attempts":4,"successes":2,"pass_rate":0.5}}',
+        encoding="utf-8",
+    )
+
+    result = plan(tmp_path, "authentication login regression")
+
+    assert result["regression"]["level"] == "medium"
+    assert any(worker["skill"] == "qa-engineer" for worker in result["workers"])
+    assert "historically failing or related evaluation cases" in result["intelligence"]["required_tests"]
 
 
 def test_synthesize_run_blocks_unverified_execution():
