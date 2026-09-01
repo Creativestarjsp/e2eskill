@@ -5,6 +5,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .guardrails import enforce as enforce_guardrails
+
 
 class WorktreeError(RuntimeError):
     pass
@@ -55,10 +57,17 @@ def has_changes(workspace: WorkerWorkspace) -> bool:
     return bool(_git(workspace.path, "status", "--porcelain").stdout.strip())
 
 
+def _tracked_changes(workspace: WorkerWorkspace) -> list[str]:
+    proc = _git(workspace.path, "status", "--porcelain").stdout
+    return sorted({line[3:].strip() for line in proc.splitlines() if len(line) >= 4})
+
+
 def commit_changes(workspace: WorkerWorkspace, message: str) -> str | None:
     if not has_changes(workspace):
         return None
+    enforce_guardrails(workspace.path, "pre-commit", _tracked_changes(workspace))
     _git(workspace.path, "add", "-A")
+    enforce_guardrails(workspace.path, "pre-commit")
     _git(workspace.path, "commit", "-m", message)
     return _git(workspace.path, "rev-parse", "HEAD").stdout.strip()
 
@@ -66,7 +75,13 @@ def commit_changes(workspace: WorkerWorkspace, message: str) -> str | None:
 def merge(root: str | Path, workspace: WorkerWorkspace, message: str) -> str:
     root = Path(root).resolve()
     ensure_clean(root)
+    enforce_guardrails(workspace.path, "pre-merge", _tracked_changes(workspace))
     _git(root, "merge", "--no-ff", workspace.branch, "-m", message)
+    try:
+        enforce_guardrails(root, "verification")
+    except RuntimeError as exc:
+        _git(root, "merge", "--abort")
+        raise WorktreeError(f"post-merge guardrail blocked integration: {exc}") from exc
     return current_ref(root)
 
 
