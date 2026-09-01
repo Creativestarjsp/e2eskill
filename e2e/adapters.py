@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .runtime_contract import parity
 from .tools import check_registry, load_tools
 
 
@@ -30,6 +31,7 @@ def capabilities(root: str | Path = ".") -> dict[str, Any]:
             "codex": shutil.which("codex") is not None,
         },
         "runtime_files": {"claude-code": (root / "CLAUDE.md").exists(), "codex": (root / "AGENTS.md").exists()},
+        "runtime_contract": {"sd1": parity(root, "sd1"), "sd3": parity(root, "sd3")},
     }
 
 
