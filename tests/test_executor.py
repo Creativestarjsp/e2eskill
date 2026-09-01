@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from e2e.executor import execute
+from e2e.executor import _command, execute
 
 
-def test_execute_defaults_to_plan_when_runtime_exists_or_not(tmp_path: Path):
-    result = execute(tmp_path, "build login")
+def test_execute_is_safe_dry_run(tmp_path: Path):
+    result = execute(tmp_path, "build login", runtime="claude-code", execute_agents=False)
     assert result["mode"] == "dry-run"
-    assert result["status"] in {"planned", "runtime-unavailable"}
+    assert result["status"] == "planned"
+    assert result["workers"]
 
 
 def test_execute_dry_run_never_launches_agent(tmp_path: Path, monkeypatch):
@@ -20,3 +21,8 @@ def test_execute_dry_run_never_launches_agent(tmp_path: Path, monkeypatch):
     result = execute(tmp_path, "build login", runtime="claude-code", execute_agents=False)
     assert result["status"] == "planned"
     assert not called
+
+
+def test_runtime_command_shapes():
+    assert _command("claude-code", "hello")[:4] == ["claude", "-p", "--output-format", "json"]
+    assert _command("codex", "hello")[0:2] == ["codex", "exec"]
