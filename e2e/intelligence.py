@@ -9,6 +9,7 @@ from typing import Any
 
 from .brain import CodeBrain
 from .memory import Memory
+from .regression import analyze_regression_risk
 
 RISK_PATTERNS = {
     "security": re.compile(r"\b(auth|authentication|authorization|token|password|secret|permission|security|oauth|jwt|login)\b", re.I),
@@ -51,7 +52,7 @@ def _load_eval_history(root: Path, limit: int = 10) -> list[dict[str, Any]]:
     for path in sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            rows.append({"file": path.relative_to(root).as_posix(), "suite": data.get("suite", data.get("id", path.stem)), "summary": data.get("summary", {}), "schema_version": data.get("schema_version")})
+            rows.append({"file": path.relative_to(root).as_posix(), "suite": data.get("suite", data.get("suite_id", data.get("id", path.stem))), "summary": data.get("summary", {}), "schema_version": data.get("schema_version")})
         except (OSError, json.JSONDecodeError):
             continue
         if len(rows) >= limit:
@@ -94,6 +95,7 @@ def build_intelligence(root: str | Path, task: str, plan: dict[str, Any] | None 
     memory = Memory(root).search(task, limit=8)
     eval_history = _load_eval_history(root)
     failure_history = [m for m in memory if m.get("type") in {"failure", "regression", "incident"}]
+    regression = analyze_regression_risk(root, task)
     verification = [
         "inspect actual repository state",
         "validate acceptance criteria against implementation",
@@ -104,9 +106,15 @@ def build_intelligence(root: str | Path, task: str, plan: dict[str, Any] | None 
     ]
     if risk["high_risk"]:
         verification.insert(4, "perform explicit security/data/infrastructure verification for identified risk areas")
+    if regression["level"] == "medium":
+        verification.insert(-1, "run targeted historical regression evaluations")
+    elif regression["level"] == "high":
+        verification.insert(-1, "expand regression evaluation coverage and require SD3 regression review")
     required_tests = ["targeted tests for affected behavior", "regression tests for impacted callers/dependencies"]
     if risk["high_risk"]:
         required_tests.append("security/data/infrastructure regression checks")
+    if regression["level"] in {"medium", "high"}:
+        required_tests.append("historically failing or related evaluation cases")
     evidence_contract = [
         "changed-file evidence",
         "test command and result evidence",
@@ -116,8 +124,10 @@ def build_intelligence(root: str | Path, task: str, plan: dict[str, Any] | None 
     ]
     if requirements["missing_explicit_criteria"]:
         evidence_contract.append("explicit acceptance criteria derived from task")
+    if regression["level"] != "low":
+        evidence_contract.append("regression-risk analysis and targeted evaluation evidence")
     report = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "task": task,
         "task_fingerprint": _hash(task),
         "generated_at": time.time(),
@@ -132,6 +142,7 @@ def build_intelligence(root: str | Path, task: str, plan: dict[str, Any] | None 
         "repository_impact": impact,
         "memory": {"matches": memory, "failure_history": failure_history},
         "eval_history": eval_history,
+        "regression": regression,
         "required_tests": required_tests,
         "evidence_contract": evidence_contract,
         "codebrain_expected": True,
