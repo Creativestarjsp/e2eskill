@@ -1,0 +1,26 @@
+hooks:
+  pre-task:
+    checks: [task-shape, acceptance-criteria, applicable-profile]
+  pre-context:
+    checks: [rules-resolution, context-bounds]
+  pre-edit:
+    checks: [protected-paths, secrets, destructive-operation, minimality-candidates]
+  post-edit:
+    checks: [diff-scope, formatting, generated-files, minimality-review]
+  pre-test:
+    checks: [test-selection, environment-safety]
+  post-test:
+    checks: [test-results, evidence-capture]
+  pre-commit:
+    checks: [changed-files, secrets, required-checks, evidence]
+  verification:
+    checks: [requirements, architecture, security, tests, impact, evidence]
+
+result:
+  status: [pass, warn, block]
+  required_fields: [rule, evidence, message, remediation]
+
+failure:
+  warn: record-and-continue
+  block: stop-and-remediate
+  repeated: escalate-to-sd3
