@@ -11,13 +11,60 @@ The repository contains an executable Python runtime with no mandatory third-par
 - `e2e.hooks` — secret and protected-path guardrails with pass/block results.
 - `e2e.memory` — scoped durable JSON memory with secret rejection.
 - `e2e.verify` — executable verification/evidence runner.
-- `e2e.adapters` — Claude/Codex/standalone detection and capability reporting.
+- `e2e.adapters` — Claude/Codex/standalone detection, registered-tool reporting, and MCP gateway capability reporting.
+- `e2e.tools` — role/scope/approval registry, policy materialization, secret-safe audit ledger, and registry validation.
+- `e2e.tool_gateway` — E2E-owned stdio MCP gateway with role-scoped discovery, allowlisted native handlers, path confinement, approval enforcement, and audit logging.
 - `e2e.orchestrator` — SD2 planning with bounded SD1 workers and dependency-aware phases.
 - `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, integrates isolated worktrees, refreshes CodeBrain, and runs an independent SD3 review with bounded correction rounds.
 - `e2e.worktree` — isolated Git worktree lifecycle, branch creation, change detection, commit, merge, and cleanup.
 - `e2e.benchmark` — repeated command benchmark runner with success rate, median latency and variance.
 - `e2e.release` — release gate checker for skills, security, CodeBrain freshness, tests and diff hygiene.
 - `e2e.cli` — developer CLI surface.
+
+## Tool / MCP gateway
+
+E2E keeps authorization above the protocol boundary. MCP provides the interoperability protocol; E2E decides which role can see and invoke which registered capability. This is important because MCP tools are model-controlled and the specification recommends human control for tool invocations. The current MCP specification also supports authorization at the transport layer for protected HTTP servers. citeturn0search2turn0search1
+
+The gateway currently exposes only registered, approval-free native read tools:
+
+```text
+repo.read
+ git.read
+shell.read
+```
+
+Write/destructive/network/secret tools remain registry capabilities but are not exposed by the gateway until their runtime-specific execution and approval path is implemented. The gateway therefore cannot silently turn an explicit-approval tool into an automatic tool.
+
+Generate runtime configuration artifacts:
+
+```bash
+python -m e2e tool gateway --role sd1
+python -m e2e tool gateway --role sd3
+```
+
+This writes ignored runtime state under `.e2e/mcp/`:
+
+```text
+.e2e/mcp/claude.json
+.e2e/mcp/codex.toml
+```
+
+Claude Code supports loading MCP servers through `--mcp-config` and can restrict discovery to that configuration with `--strict-mcp-config`. citeturn1search1 Codex supports MCP servers through its MCP configuration, including stdio servers and per-server tool allowlists. citeturn1search0turn1search2
+
+E2E generates both artifacts without mutating the user's global runtime configuration. Automatic Claude injection into worker execution is the next adapter step; Codex configuration remains an explicit runtime-adapter concern rather than silently modifying `~/.codex`.
+
+### Gateway security boundary
+
+1. Unknown tools are denied.
+2. Unauthorized roles are denied.
+3. Explicit-approval tools are denied unless an approval token is supplied by the execution layer.
+4. Repository reads cannot escape the worker repository root.
+5. Shell reads use a fixed command allowlist.
+6. Tool arguments are fingerprinted rather than persisted verbatim in the audit ledger.
+7. Failed calls are auditable.
+8. The gateway never receives secret values unless a future handler explicitly requires them; secret-bearing handlers must remain runtime-managed.
+
+The MCP 2026-07-28 specification moved to a stateless protocol core and added authorization hardening, so E2E should keep its gateway stateless and avoid building new behavior around legacy session assumptions. citeturn0search0turn0search11
 
 ## Agent execution
 
@@ -66,6 +113,10 @@ python -m e2e brain search "authentication"
 python -m e2e brain impact AuthService
 python -m e2e context "implement the requested feature"
 python -m e2e skill list
+python -m e2e tool list
+python -m e2e tool check
+python -m e2e tool policy sd1
+python -m e2e tool gateway --role sd1
 python -m e2e orchestrate "implement the requested feature"
 python -m e2e execute "implement the requested feature"
 python -m e2e execute "implement the requested feature" --runtime claude-code --execute
@@ -94,4 +145,4 @@ Parser provenance is stored in `.e2e/brain.json`, including provider counts and 
 
 ## Runtime state
 
-Generated indexes, memory, verification and benchmark reports are stored under `.e2e/` and ignored by Git.
+Generated indexes, memory, verification, benchmark reports, tool policies, MCP configuration artifacts, and gateway audit logs are stored under `.e2e/` and ignored by Git.
