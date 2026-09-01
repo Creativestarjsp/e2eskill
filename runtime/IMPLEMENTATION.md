@@ -1,10 +1,11 @@
 # E2E Runtime Implementation
 
-The repository now contains an executable Python runtime with no mandatory third-party runtime dependency.
+The repository contains an executable Python runtime with no mandatory third-party runtime dependency.
 
 ## Implemented
 
-- `e2e.brain` — deterministic native CodeBrain MVP with file hashes, symbols, imports, approximate calls, search, callers/callees, dependencies, impact, map, and context retrieval.
+- `e2e.brain` — repository graph with file hashes, symbols, imports, approximate calls, search, callers/callees, dependencies, impact, map, and context retrieval.
+- `e2e.tree_sitter_provider` — optional structural parser for Python, JavaScript, JSX, TypeScript, and TSX when the CodeBrain extra is installed.
 - `e2e.context` — bounded project/rules context loader with precedence metadata.
 - `e2e.skills` — executable skill discovery and task matching.
 - `e2e.hooks` — secret and protected-path guardrails with pass/block results.
@@ -32,9 +33,23 @@ python -m e2e benchmark "python -m pytest -q" --repetitions 5
 python -m e2e release
 ```
 
-## Parser strategy
+## CodeBrain parser strategy
 
-The MVP uses a deterministic dependency-free parser fallback. Tree-sitter is the preferred future structural provider for richer language coverage and incremental parsing. The provider boundary keeps this migration from changing agent skills.
+CodeBrain uses an explicit provider boundary:
+
+1. `auto` — prefer Tree-sitter for supported languages when its bindings are installed; otherwise use the deterministic regex fallback.
+2. `tree-sitter` — structural provider path for supported languages.
+3. `regex` — dependency-free portability mode.
+
+Install the optional parser stack with:
+
+```bash
+pip install -e '.[codebrain]'
+```
+
+The Tree-sitter provider currently covers Python, JavaScript, JSX, TypeScript, and TSX. Unsupported languages continue through the fallback path instead of blocking repository analysis.
+
+Parser provenance is stored in `.e2e/brain.json`, including provider counts and diagnostics. Syntax-error diagnostics lower reported coverage to `partial`; they are never silently treated as a clean parse.
 
 ## Runtime state
 
