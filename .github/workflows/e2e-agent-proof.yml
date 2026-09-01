@@ -11,12 +11,6 @@ on:
       - 'architecture/**'
       - 'evals/**'
   workflow_dispatch:
-    inputs:
-      repetitions:
-        description: Independent attempts per task family
-        required: true
-        default: '2'
-        type: string
 
 permissions:
   contents: read
@@ -56,30 +50,9 @@ PY
           name: e2e-p0-p2
           path: /tmp/plan.json
 
-  proof_matrix:
-    name: Build proof matrix
-    runs-on: ubuntu-latest
-    outputs:
-      attempts: ${{ steps.matrix.outputs.attempts }}
-    steps:
-      - id: matrix
-        env:
-          REPETITIONS: ${{ github.event.inputs.repetitions || '2' }}
-        run: |
-          set -euo pipefail
-          [[ "$REPETITIONS" =~ ^[1-9][0-9]*$ ]]
-          (( REPETITIONS <= 5 ))
-          attempts=$(python - "$REPETITIONS" <<'PY'
-import json, sys
-n = int(sys.argv[1])
-print(json.dumps(list(range(1, n + 1))))
-PY
-          )
-          echo "attempts=$attempts" >> "$GITHUB_OUTPUT"
-
   task-proof:
     name: P3-P4 • ${{ matrix.family }} • attempt ${{ matrix.attempt }}
-    needs: [p0-p2, proof_matrix]
+    needs: p0-p2
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -87,7 +60,7 @@ PY
       max-parallel: 2
       matrix:
         family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
-        attempt: ${{ fromJSON(needs.proof_matrix.outputs.attempts) }}
+        attempt: [1, 2]
     services:
       mongodb:
         image: mongo:8.0
