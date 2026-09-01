@@ -9,6 +9,7 @@ The repository contains an executable Python runtime with no mandatory third-par
 - `e2e.context` — bounded project/rules context loader with precedence metadata.
 - `e2e.skills` — executable skill discovery and task matching.
 - `e2e.hooks` — secret and protected-path guardrails with pass/block results.
+- `e2e.guardrails` — runtime-enforced guardrail policy at worker commit and integration boundaries.
 - `e2e.memory` — scoped durable JSON memory with secret rejection.
 - `e2e.verify` — executable verification/evidence runner.
 - `e2e.adapters` — Claude/Codex/standalone detection, registered-tool reporting, and MCP gateway capability reporting.
@@ -16,10 +17,10 @@ The repository contains an executable Python runtime with no mandatory third-par
 - `e2e.tool_gateway` — E2E-owned stdio MCP gateway with role-scoped discovery, allowlisted native handlers, path confinement, approval enforcement, and audit logging.
 - `e2e.orchestrator` — SD2 planning with bounded SD1 workers and dependency-aware phases.
 - `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, injects the E2E MCP gateway into the selected runtime, integrates isolated worktrees, refreshes CodeBrain, and runs an independent SD3 review with bounded correction rounds.
-- `e2e.worktree` — isolated Git worktree lifecycle, branch creation, change detection, commit, merge, and cleanup.
+- `e2e.worktree` — isolated Git worktree lifecycle with guardrail-enforced commit and merge boundaries.
 - `e2e.benchmark` — repeated command benchmark runner with success rate, median latency and variance.
 - `e2e.release` — release gate checker for skills, security, CodeBrain freshness, tests and diff hygiene.
-- `e2e.cli` — developer CLI surface.
+- `e2e.cli` — developer CLI surface, including guardrail inspection.
 
 ## Tool / MCP gateway
 
@@ -64,7 +65,45 @@ The runtime adapter remains responsible for Claude/Codex-specific launch behavio
 7. Failed calls are auditable.
 8. The gateway does not persist secret values; future secret-bearing handlers must remain runtime-managed.
 
-The current MCP specification uses a stateless protocol core and strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions.
+The current MCP specification uses a stateless protocol core and strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions. citeturn0search0
+
+## Hooks & guardrails
+
+Guardrails are now enforced at the boundaries where agent output becomes an E2E artifact:
+
+```text
+SD1 runtime
+   ↓
+pre-commit guardrail
+   ↓
+Git commit
+   ↓
+pre-merge guardrail
+   ↓
+Git merge
+   ↓
+post-merge verification guardrail
+   ↓
+CodeBrain + SD3
+```
+
+The policy is deny-on-violation and currently covers:
+
+- secret-like content
+- protected configuration paths
+- `.git/` and `.e2e/worktrees/` runtime paths
+- audit-safe evidence handling
+- failed-check blocking rather than blind retry
+
+Inspect or materialize the policy with:
+
+```bash
+python -m e2e guardrails policy
+python -m e2e guardrails check --stage verification
+python -m e2e guardrails write
+```
+
+A worker cannot be committed or integrated when a guardrail blocks it. This is stronger than prompt-only instructions, while keeping the policy runtime-neutral. The agent process itself is not treated as a full OS sandbox; runtime-specific sandboxing remains an adapter concern.
 
 ## Agent execution
 
@@ -118,6 +157,9 @@ python -m e2e tool check
 python -m e2e tool policy sd1
 python -m e2e tool gateway --role sd1
 python -m e2e tool gateway --role sd1 --serve
+python -m e2e guardrails policy
+python -m e2e guardrails check --stage verification
+python -m e2e guardrails write
 python -m e2e orchestrate "implement the requested feature"
 python -m e2e execute "implement the requested feature"
 python -m e2e execute "implement the requested feature" --runtime claude-code --execute
@@ -146,4 +188,4 @@ Parser provenance is stored in `.e2e/brain.json`, including provider counts and 
 
 ## Runtime state
 
-Generated indexes, memory, verification, benchmark reports, tool policies, MCP configuration artifacts, and gateway audit logs are stored under `.e2e/` and ignored by Git.
+Generated indexes, memory, verification, benchmark reports, tool policies, guardrail policy, MCP configuration artifacts, and gateway audit logs are stored under `.e2e/` and ignored by Git.
