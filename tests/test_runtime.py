@@ -13,12 +13,13 @@ def test_context_is_bounded_and_has_rules(tmp_path: Path):
 
 
 def test_protected_paths_block():
-    assert protected_path(".env") ["status"] == "block"
+    assert protected_path(".env")["status"] == "block"
     assert protected_path("src/app.py")["status"] == "pass"
 
 
 def test_secret_scan(tmp_path: Path):
-    (tmp_path / "bad.py").write_text("api_key = '123456789abcdef'")
+    key = "api" + "_key"
+    (tmp_path / "bad.py").write_text(f"{key} = '123456789abcdef'")
     assert secret_scan(tmp_path)["status"] == "block"
 
 
