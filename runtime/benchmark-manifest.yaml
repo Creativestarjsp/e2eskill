@@ -1,0 +1,39 @@
+benchmark:
+  name: e2e-agent-engineering
+  design: paired-agentic
+  repetitions: 5
+  isolation: git-worktree
+  evaluation: execute-and-verify
+
+arms:
+  - baseline
+  - e2e-lite
+  - e2e-standard
+  - e2e-strict
+
+metrics:
+  correctness: required
+  security: required
+  acceptance_criteria: required
+  code_change_size: measure
+  tool_calls: measure
+  input_tokens: measure-when-available
+  output_tokens: measure-when-available
+  cost: measure-when-available
+  latency: measure
+
+rules:
+  never_trade_safety_for_minimality: true
+  no_single-shot-only_headline: true
+  report_median_and_variance: true
+  publish_failures: true
+  distinguish_internal_from_independent_results: true
+
+minimum_task_classes:
+  - bug-fix
+  - feature
+  - refactor
+  - ui-change
+  - api-change
+  - database-change
+  - security-sensitive-change
