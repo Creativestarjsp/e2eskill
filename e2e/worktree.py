@@ -59,8 +59,8 @@ def commit_changes(workspace: WorkerWorkspace, message: str) -> str | None:
     if not has_changes(workspace):
         return None
     _git(workspace.path, "add", "-A")
-    proc = _git(workspace.path, "commit", "-m", message)
-    return proc.stdout.splitlines()[-1].strip() if proc.stdout else None
+    _git(workspace.path, "commit", "-m", message)
+    return _git(workspace.path, "rev-parse", "HEAD").stdout.strip()
 
 
 def merge(root: str | Path, workspace: WorkerWorkspace, message: str) -> str:
@@ -75,9 +75,11 @@ def remove(root: str | Path, workspace: WorkerWorkspace, delete_branch: bool = T
     if workspace.path.exists():
         _git(root, "worktree", "remove", "--force", str(workspace.path))
     if delete_branch:
-        proc = subprocess.run(["git", "branch", "-D", workspace.branch], cwd=root, text=True, capture_output=True)
-        if proc.returncode != 0 and workspace.branch in proc.stderr:
-            raise WorktreeError(proc.stderr.strip())
+        try:
+            _git(root, "branch", "-D", workspace.branch)
+        except WorktreeError as exc:
+            if workspace.branch in str(exc):
+                raise
 
 
 def cleanup_root(root: str | Path) -> None:
