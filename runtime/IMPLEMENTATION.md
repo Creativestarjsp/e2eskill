@@ -65,7 +65,7 @@ The runtime adapter remains responsible for Claude/Codex-specific launch behavio
 7. Failed calls are auditable.
 8. The gateway does not persist secret values; future secret-bearing handlers must remain runtime-managed.
 
-The current MCP specification uses a stateless protocol core and strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions. citeturn0search0
+The gateway targets the current stateless MCP protocol model and keeps authorization above the protocol boundary rather than relying on transport sessions.
 
 ## Hooks & guardrails
 
