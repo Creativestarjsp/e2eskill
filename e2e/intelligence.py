@@ -70,10 +70,18 @@ def _affected_risk(root: Path, task: str, context: dict[str, Any]) -> dict[str, 
     impacted: dict[str, Any] = {}
     for path in relevant_files[:10]:
         impacted[path] = brain.impact(path)
+    provenance = context.get("provenance") if isinstance(context.get("provenance"), dict) else {}
+    if not provenance:
+        provenance = {
+            "provider": brain.data.get("provider"),
+            "providers": brain.data.get("providers", {}),
+            "revision": brain.data.get("revision"),
+            "coverage": "partial" if brain.data.get("errors") else "structural",
+        }
     return {
         "relevant_files": relevant_files[:20],
         "impacts": impacted,
-        "codebrain": context.get("provenance", {}),
+        "codebrain": provenance,
         "risk_score": min(10, len(relevant_files) + sum(len(v.get("affected_files", [])) for v in impacted.values())),
     }
 
