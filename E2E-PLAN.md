@@ -39,18 +39,18 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 
 ## Phase Status
 
-All 12 phases now have architecture and a concrete implementation surface. The table below distinguishes implemented runtime foundations from capabilities that still require richer production integrations.
+All 12 phases have architecture and a concrete implementation surface. The table below distinguishes implemented runtime foundations from capabilities that still require richer production integrations.
 
 | Phase | Architecture | Engineering implementation |
 |---|---|---|
 | 1 | Complete | 🟢 Mostly implemented |
 | 2 | Complete | 🟢 Context/rules runtime implemented |
 | 3 | Complete | 🟢 Native CodeBrain MVP implemented; Tree-sitter provider remains an enhancement |
-| 4 | Complete | 🟢 SD1/SD2/SD3 implemented |
+| 4 | Complete | 🟢 SD1/SD2/SD3 execution implemented with isolated worktrees and bounded correction loop |
 | 5 | Complete | 🟢 Skills + executable registry implemented |
 | 6 | Complete | 🟢 Browser skill + 🟡 generic tool adapters remain runtime-specific |
 | 7 | Complete | 🟢 Hooks + memory runtime implemented |
-| 8 | Complete | 🟢 Verification runner implemented; SD3 remains an independent agent decision |
+| 8 | Complete | 🟢 Verification runner implemented; SD3 now has structured independent review and correction decisions |
 | 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces implemented |
 | 10 | Complete | 🟢 CLI implemented; visualization remains a future presentation layer |
 | 11 | Complete | 🟢 Reproducible benchmark runner implemented; real multi-agent benchmark execution requires a configured runtime/task corpus |
@@ -69,12 +69,46 @@ e2e/
 ├── memory.py      durable scoped memory
 ├── verify.py      evidence/verification runner
 ├── adapters.py    runtime capability detection
+├── orchestrator.py SD2 planning and dependency graph
+├── worktree.py    isolated SD1 Git workspaces
+├── executor.py    SD1 execution + integration + SD3 review/correction
 ├── benchmark.py   reproducible benchmark runner
 ├── release.py     release gate checker
 └── cli.py         developer CLI
 ```
 
 Runtime contracts remain in `runtime/`. Generated state is kept under `.e2e/` and ignored by Git.
+
+## SD1 / SD2 / SD3 Execution Contract
+
+```text
+Task
+ ↓
+SD2 plan
+ ↓
+dependency-ready SD1 workers
+ ↓
+isolated worktrees (max 4 active)
+ ↓
+worker evidence
+ ↓
+deterministic integration
+ ↓
+CodeBrain refresh
+ ↓
+SD3 independent inspection
+ ├── approved → DONE
+ ├── rejected → ESCALATE
+ └── needs-correction
+       ↓
+   fresh SD1 correction workspace
+       ↓
+   integrate + refresh CodeBrain
+       ↓
+   SD3 review again
+```
+
+The correction loop is bounded at two rounds. Failed workers, merge conflicts, malformed supervisor decisions, and persistent correction failures remain explicit in execution reports rather than triggering blind retries.
 
 ## Completed Architecture Contracts
 
@@ -117,7 +151,7 @@ Runtime contracts remain in `runtime/`. Generated state is kept under `.e2e/` an
 
 ## Verification
 
-A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3.
+A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3. GitHub Actions provides workflow-run and job status visibility for this verification process. citeturn0search0
 
 ## Definition of Done
 
@@ -130,8 +164,10 @@ load project context
 → retrieve targeted code context
 → apply minimality decision ladder
 → decompose work through SD2
-→ execute through SD1
+→ execute through SD1 in isolated workspaces
+→ integrate safely
 → verify independently through SD3
+→ perform bounded corrections when necessary
 → record evidence and decisions
 → preserve useful memory
 → enforce hooks/guardrails
