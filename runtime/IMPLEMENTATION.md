@@ -23,13 +23,13 @@ The repository contains an executable Python runtime with no mandatory third-par
 
 ## Tool / MCP gateway
 
-E2E keeps authorization above the protocol boundary. MCP provides the interoperability protocol; E2E decides which role can see and invoke which registered capability. This is important because MCP tools are model-controlled and the specification recommends human control for tool invocations. The current MCP specification also supports authorization at the transport layer for protected HTTP servers. citeturn0search2turn0search1
+E2E keeps authorization above the protocol boundary. MCP provides the interoperability protocol; E2E decides which role can see and invoke which registered capability.
 
 The gateway currently exposes only registered, approval-free native read tools:
 
 ```text
 repo.read
- git.read
+git.read
 shell.read
 ```
 
@@ -49,9 +49,9 @@ This writes ignored runtime state under `.e2e/mcp/`:
 .e2e/mcp/codex.toml
 ```
 
-Claude Code supports loading MCP servers through `--mcp-config` and can restrict discovery to that configuration with `--strict-mcp-config`. citeturn1search1 Codex supports MCP servers through its MCP configuration, including stdio servers and per-server tool allowlists. citeturn1search0turn1search2
+Claude Code can load MCP servers from an explicit configuration file and can restrict a session to that configuration. Codex supports MCP servers through its MCP configuration, including stdio servers and per-server tool allowlists. E2E generates both artifacts without mutating the user's global runtime configuration.
 
-E2E generates both artifacts without mutating the user's global runtime configuration. Automatic Claude injection into worker execution is the next adapter step; Codex configuration remains an explicit runtime-adapter concern rather than silently modifying `~/.codex`.
+Automatic Claude injection into worker execution is the next adapter step; Codex configuration remains an explicit runtime-adapter concern rather than silently modifying the user's global configuration.
 
 ### Gateway security boundary
 
@@ -64,7 +64,7 @@ E2E generates both artifacts without mutating the user's global runtime configur
 7. Failed calls are auditable.
 8. The gateway never receives secret values unless a future handler explicitly requires them; secret-bearing handlers must remain runtime-managed.
 
-The MCP 2026-07-28 specification moved to a stateless protocol core and added authorization hardening, so E2E should keep its gateway stateless and avoid building new behavior around legacy session assumptions. citeturn0search0turn0search11
+The current MCP specification uses a stateless protocol core and has strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions.
 
 ## Agent execution
 
