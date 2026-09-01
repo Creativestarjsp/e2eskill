@@ -6,6 +6,22 @@ This is the mandatory quality standard for every skill in E2E Skill System.
 
 A skill is maintainable engineering knowledge, not a prompt dump. It must define behavior, boundaries, workflow, decision guidance, verification, and maintenance expectations.
 
+## Runtime-Agnostic Principle
+
+Domain skills are shared across supported coding-agent runtimes, including **Claude Code and Codex**.
+
+Do not create duplicate domain skills merely because the runtime differs.
+
+```text
+Claude Code ──┐
+              ├── Shared Skill ── Domain behavior
+Codex ────────┘
+```
+
+Runtime-specific invocation, commands, adapters, or integration behavior belongs in the runtime adapter layer, not in the domain skill.
+
+A skill must not depend on Claude-specific or Codex-specific behavior unless that dependency is explicitly documented and unavoidable.
+
 ## Required Skill Identity
 
 Every `SKILL.md` must define:
@@ -113,6 +129,18 @@ Skill
 
 A skill should not assume it is always called directly by a human. Its outputs should be usable by workers, orchestrators, and reviewers.
 
+## Runtime Compatibility
+
+When runtime behavior matters, test or reason about the skill through each supported adapter.
+
+At minimum:
+
+- shared domain instructions remain identical
+- runtime-specific instructions are isolated
+- file paths and commands are valid for the target runtime
+- agent handoffs preserve the same task contract
+- verification evidence is portable
+
 ## Maintainability
 
 Keep instructions explicit, internally consistent, reasonably concise, free of duplicated rules, and independent of temporary project details unless intentionally project-specific.
@@ -128,6 +156,13 @@ skills/<skill-name>/
 ```
 
 Only create supporting directories when they provide real value.
+
+Runtime-specific adapters should live outside the shared skill directory, for example:
+
+```text
+.claude/
+.codex/
+```
 
 ## Acceptance Checklist
 
@@ -150,6 +185,8 @@ A skill is ready only when all applicable items pass:
 - [ ] tooling is used where deterministic tooling helps
 - [ ] composition dependencies are explicit
 - [ ] SD1/SD2/SD3 compatibility is maintained
+- [ ] Claude/Codex compatibility is maintained where supported
+- [ ] runtime-specific behavior is isolated
 - [ ] documentation is internally consistent
 
 ## Quality Levels
@@ -164,10 +201,10 @@ Clear scope and workflow; basic verification exists.
 Strong decision framework, anti-patterns, verification, failure handling, and documentation.
 
 ### L3 — Reference Quality
-Production quality plus strong examples, supporting references/tooling where useful, repeatable validation, and demonstrated reliability.
+Production quality plus strong examples, supporting references/tooling where useful, repeatable validation, and demonstrated reliability across supported runtimes.
 
 New skills should target **L2 minimum**. Core skills should target **L3**.
 
 ## Final Principle
 
-Do not optimize for the number of skills. Optimize for the probability that the correct skill produces the correct result consistently.
+Do not optimize for the number of skills. Optimize for the probability that the correct skill produces the correct result consistently across supported agent runtimes.
