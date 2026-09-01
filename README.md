@@ -6,7 +6,9 @@ E2E is designed around a simple principle: **AI-generated engineering work shoul
 
 It combines repository intelligence, reusable specialist skills, structured context, multi-agent orchestration, deterministic guardrails, evaluation history, regression intelligence, and independent verification into one engineering workflow.
 
-[![E2E Runtime](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-runtime.yml/badge.svg)](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-runtime.yml)
+[![E2E Runtime](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-runtime.yml/badge.svg)](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-runtime.yml) [![E2E Proof](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-proof.yml/badge.svg)](https://github.com/Creativestarjsp/e2eskill/actions/workflows/e2e-proof.yml)
+
+> **Proof status:** `NOT PROVEN` until the production-proof gates in [`architecture/PROOF-STANDARD.md`](architecture/PROOF-STANDARD.md) are satisfied. A green CI run means the tested checks passed; it does not by itself prove real-agent engineering reliability.
 
 ---
 
@@ -166,7 +168,7 @@ Supported source families include Python, JavaScript, JSX, TypeScript, Java, Go,
 
 ---
 
-## Evaluation & Verification
+## Evaluation, Verification & Proof
 
 E2E separates **execution success** from **engineering confidence**.
 
@@ -182,17 +184,29 @@ The evaluation layer supports:
 - regression detection
 - persisted evaluation evidence
 
-Verification can additionally incorporate:
+The repository now has a dedicated proof ladder:
 
-- guardrail checks
-- test execution
-- CodeBrain freshness
-- worker evidence
-- SD3 review
-- introspection and failure classification
-- release gates
+```text
+P0  Internal health
+ ↓
+P1  Deterministic evaluation
+ ↓
+P2  Orchestration proof
+ ↓
+P3  Real SD1 execution
+ ↓
+P4  Independent SD3 verification
+ ↓
+P5  Failure + recovery
+ ↓
+P6  Repeated benchmark
+ ↓
+PROVEN
+```
 
-The system therefore avoids treating a single successful generation as proof that a change is production-ready.
+The automated **E2E Proof Gate** runs P0-P2 across Python 3.10, 3.11, and 3.12. The separate **E2E Real Agent Proof** workflow is manual and cost-bearing: it runs real SD1/SD3 agents against a disposable repository and stores evidence without pushing agent changes to `main`.
+
+A production-proof claim requires the thresholds and evidence defined in [`architecture/PROOF-STANDARD.md`](architecture/PROOF-STANDARD.md), including repeated real-agent tasks and recovery scenarios. GitHub Actions supports matrix testing and persistent workflow artifacts, which E2E uses to make this evidence reproducible and inspectable. citeturn0search2turn0search0
 
 ### CI Self-Healing
 
@@ -219,27 +233,15 @@ See [`architecture/CI-SELF-HEAL.md`](architecture/CI-SELF-HEAL.md) for the opera
 - `pytest` for running the test suite
 - Claude Code and/or Codex when using external agent runtimes
 
-The core runtime is dependency-light. Optional CodeBrain parsing dependencies are available through the `codebrain` extra.
-
 ### Install
 
 ```bash
-git clone https://github.com/Creativestarjsp/e2eskill.git
-cd e2eskill
-
 python -m pip install -e .
 ```
 
-Optional CodeBrain parser support:
+### Inspect the runtime
 
 ```bash
-python -m pip install -e '.[codebrain]'
-```
-
-### Initialize
-
-```bash
-e2e init
 e2e doctor
 e2e status
 ```
@@ -249,88 +251,29 @@ e2e status
 ```bash
 e2e brain build
 e2e brain check
-e2e brain search "authentication"
-e2e brain impact AuthService
 ```
 
-### Inspect task context
+### Generate engineering context
 
 ```bash
-e2e context "add Google login"
-e2e intelligence "add Google login"
+e2e context "add authentication"
+e2e intelligence "add authentication"
 ```
 
-### Plan work
+### Plan and execute
 
 ```bash
-e2e orchestrate "add authentication API"
+e2e orchestrate "add authentication"
+e2e execute "add authentication"
 ```
 
-### Execute
+Execution is dry-run by default. Use `--execute` only when an external runtime is configured and the task is authorized.
 
-By default, execution is a dry run:
-
-```bash
-e2e execute "add authentication API"
-```
-
-To launch configured SD1/SD3 runtimes:
-
-```bash
-e2e execute "add authentication API" --execute
-```
-
-Runtime selection is automatic by default, or can be explicit:
-
-```bash
-e2e execute "add authentication API" --runtime claude-code
-
-e2e execute "add authentication API" --runtime codex
-```
-
-Maximum worker concurrency is bounded by the runtime policy and CLI limit:
-
-```bash
-e2e execute "add authentication API" --execute --max-workers 4
-```
-
-### Verify
-
-```bash
-e2e verify --test "python -m pytest -q"
-```
-
-### Evaluate a suite
+### Run evaluations
 
 ```bash
 e2e eval-suite run evals/smoke.json
-```
-
-Compare a current evaluation against a baseline:
-
-```bash
-e2e eval-suite compare current.json baseline.json
-```
-
-### Inspect runtime contracts
-
-```bash
-e2e runtime inspect
-e2e runtime parity
-```
-
-### Inspect tools and guardrails
-
-```bash
-e2e tool list
-e2e tool check
-e2e guardrails check --stage verification
-```
-
-### Run the full test suite
-
-```bash
-python -m pytest -q
+e2e eval-suite run evals/proof.json
 ```
 
 ---
@@ -338,185 +281,150 @@ python -m pytest -q
 ## Project Structure
 
 ```text
-.
-├── architecture/          # System architecture and engineering standards
-├── e2e/                   # Executable E2E runtime
-├── evals/                 # Evaluation suites
-├── runtime/               # Runtime contracts and execution profiles
-├── skills/                # Reusable specialist engineering skills
-├── standards/             # Authoring and quality standards
-├── templates/             # Reusable engineering templates
-├── tests/                 # Runtime and system tests
-├── .codex/                # Codex-specific agent configuration
-├── .github/workflows/     # Continuous integration and self-healing
-├── AGENTS.md              # Repository agent instructions
-├── BRD.md                 # Business requirements / system source of truth
-├── E2E-PLAN.md            # Master roadmap and implementation status
-├── SD-AGENT-SYSTEM.md     # SD1 / SD2 / SD3 operating model
-└── pyproject.toml         # Python package and CLI configuration
+E2E/
+├── .codex/                    # Codex runtime instructions and agents
+├── .github/workflows/         # CI, proof, and self-healing automation
+├── architecture/              # Runtime and engineering architecture
+├── e2e/                        # Native Python runtime
+├── evals/                      # Deterministic evaluation suites
+├── runtime/                    # Runtime adapter contracts
+├── skills/                     # Shared specialist skills
+├── standards/                  # Authoring, browser, quality, review standards
+├── templates/                  # Reusable project templates
+├── tests/                      # Runtime tests
+├── AGENTS.md                   # Agent operating instructions
+├── BRD.md                      # Business requirements
+├── CLAUDE.md                   # Claude Code instructions
+├── CONVENTIONS.md              # Repository conventions
+└── E2E-PLAN.md                 # Master roadmap
 ```
-
----
-
-## Skill System
-
-Skills are the reusable engineering knowledge layer of E2E.
-
-The repository includes specialist capabilities for areas such as:
-
-- Software architecture
-- Backend development
-- Frontend development
-- React / React Native / Expo
-- API development
-- Database engineering
-- Mongoose / MongoDB persistence
-- Security engineering
-- QA engineering
-- DevOps
-- Code review
-- UI/UX design
-- SEO
-- Agent and orchestration roles
-
-Skills follow explicit authoring, quality, review, and verification standards. See [`SKILL-AUTHORING-STANDARD.md`](SKILL-AUTHORING-STANDARD.md) and [`standards/SKILL-QUALITY-SCORECARD.md`](standards/SKILL-QUALITY-SCORECARD.md).
 
 ---
 
 ## Runtime Model
 
-E2E keeps engineering knowledge runtime-neutral while adapting execution to supported agent environments.
+E2E keeps domain expertise separate from runtime-specific adapters.
 
 ```text
-                 E2E Engineering Layer
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-        Claude Code                Codex
-             │                       │
-             └───────────┬───────────┘
-                         ▼
-                 Runtime Contracts
-                         │
-                         ▼
-                  Shared E2E Policy
+Shared E2E Skills
+      │
+      ├───────────────┐
+      ▼               ▼
+ Claude Code        Codex
+      │               │
+      └───────┬───────┘
+              ▼
+        E2E Runtime
+              │
+       SD1 / SD2 / SD3
 ```
 
-Runtime-specific behavior belongs in the runtime adapter layer rather than being duplicated across domain skills.
+This allows engineering standards and specialist skills to remain portable while runtime-specific execution behavior stays isolated.
 
 ---
 
-## Engineering Principles
+## Design Principles
 
-1. **Evidence over claims** — completion must be supported by observable evidence.
-2. **Independent verification** — implementation and approval are separate responsibilities.
-3. **Minimal correct change** — reuse existing capabilities before introducing new ones.
-4. **Context before execution** — understand the repository and applicable rules before changing it.
-5. **Regression-aware planning** — previous failures should influence verification depth.
-6. **Deterministic guardrails** — safety-critical controls should not depend solely on model behavior.
-7. **Bounded autonomy** — workers operate within explicit scope, tools, and concurrency limits.
-8. **No infinite retry loops** — persistent, architectural, or integration failures are escalated.
-9. **Runtime neutrality** — shared engineering knowledge should not depend on a single agent runtime.
-10. **Security is a system property** — secrets, protected paths, tool access, and verification are controlled explicitly.
+1. **Evidence over assertions** — a worker must show what changed and how it was verified.
+2. **Independent verification** — SD3 is not the same role as implementation.
+3. **Deterministic guardrails** — safety boundaries are enforced by code, not model memory.
+4. **Minimal changes** — agents should implement the smallest correct solution.
+5. **Research before implementation** — non-trivial work should establish relevant facts before editing.
+6. **Memory is advisory** — remembered information never becomes an authorization boundary.
+7. **Failure should teach the system** — evaluation and introspection feed regression intelligence.
+8. **No blind retries** — persistent failures escalate instead of looping indefinitely.
+9. **Runtime neutrality** — Claude Code and Codex share the same engineering contract.
+10. **Proof is earned** — green CI is a health signal; repeated real-world evidence earns `PROVEN`.
 
 ---
 
 ## Documentation
 
-### Architecture
+Key architecture documents include:
 
-- [`E2E-PLAN.md`](E2E-PLAN.md) — master roadmap and definition of done
-- [`BRD.md`](BRD.md) — business requirements and system source of truth
-- [`SD-AGENT-SYSTEM.md`](SD-AGENT-SYSTEM.md) — SD1 / SD2 / SD3 operating model
-- [`architecture/CONTEXT-AND-RULES.md`](architecture/CONTEXT-AND-RULES.md) — context loading and rule precedence
-- [`architecture/CODEBRAIN.md`](architecture/CODEBRAIN.md) — repository intelligence
-- [`architecture/REGRESSION-INTELLIGENCE.md`](architecture/REGRESSION-INTELLIGENCE.md) — regression-aware engineering planning
-- [`architecture/VERIFICATION.md`](architecture/VERIFICATION.md) — evidence and verification model
-- [`architecture/CI-SELF-HEAL.md`](architecture/CI-SELF-HEAL.md) — CI repair scheduler
-- [`architecture/RELEASE-GATES.md`](architecture/RELEASE-GATES.md) — release requirements
-
-### Standards
-
-- [`CONVENTIONS.md`](CONVENTIONS.md) — repository conventions
-- [`SKILL-AUTHORING-STANDARD.md`](SKILL-AUTHORING-STANDARD.md) — skill authoring
-- [`AGENT-AUTHORING-STANDARD.md`](AGENT-AUTHORING-STANDARD.md) — agent authoring
-- [`standards/SKILL-QUALITY-SCORECARD.md`](standards/SKILL-QUALITY-SCORECARD.md) — skill quality evaluation
-- [`standards/SKILL-REVIEW-WORKFLOW.md`](standards/SKILL-REVIEW-WORKFLOW.md) — skill review process
+- [`E2E-PLAN.md`](E2E-PLAN.md) — master roadmap
+- [`SD-AGENT-SYSTEM.md`](SD-AGENT-SYSTEM.md) — SD1/SD2/SD3 model
+- [`architecture/REGRESSION-INTELLIGENCE.md`](architecture/REGRESSION-INTELLIGENCE.md) — regression intelligence
+- [`architecture/CI-SELF-HEAL.md`](architecture/CI-SELF-HEAL.md) — CI repair loop
+- [`architecture/PROOF-STANDARD.md`](architecture/PROOF-STANDARD.md) — production proof contract
+- [`architecture/TOOL-SYSTEM.md`](architecture/TOOL-SYSTEM.md) — tool architecture
+- [`architecture/DATABASE-ABSTRACTION.md`](architecture/DATABASE-ABSTRACTION.md) — persistence abstraction
+- [`runtime/RUNTIME-ADAPTER-STANDARD.md`](runtime/RUNTIME-ADAPTER-STANDARD.md) — runtime contract
 - [`standards/BROWSER-EXECUTION-STANDARD.md`](standards/BROWSER-EXECUTION-STANDARD.md) — browser execution policy
-
-### Runtime
-
-- [`runtime/IMPLEMENTATION.md`](runtime/IMPLEMENTATION.md) — runtime implementation boundary
-- [`runtime/RUNTIME-ADAPTER-STANDARD.md`](runtime/RUNTIME-ADAPTER-STANDARD.md) — runtime adapter contract
-- [`runtime/e2e-manifest.yaml`](runtime/e2e-manifest.yaml) — system manifest
-- [`runtime/profiles.yaml`](runtime/profiles.yaml) — execution profiles
+- [`standards/SKILL-AUTHORING-STANDARD.md`](standards/SKILL-AUTHORING-STANDARD.md) — skill quality standard
 
 ---
 
 ## Development Workflow
 
-The intended engineering loop is:
+For repository changes:
 
-```text
-UNDERSTAND
-    ↓
-INSPECT
-    ↓
-DEFINE
-    ↓
-DESIGN
-    ↓
-MINIMIZE
-    ↓
-IMPLEMENT
-    ↓
-TEST
-    ↓
-EVALUATE
-    ↓
-REVIEW
-    ↓
-VERIFY
-    ↓
-DOCUMENT
+```bash
+git checkout -b feature/<name>
+python -m pytest -q
+python -m e2e brain build
+python -m e2e brain check
+python -m e2e guardrails check --stage verification
+python -m e2e eval-suite run evals/smoke.json
+git diff --check
+git commit
 ```
 
-For contributors, start with [`AGENTS.md`](AGENTS.md), [`CONVENTIONS.md`](CONVENTIONS.md), and [`E2E-PLAN.md`](E2E-PLAN.md).
+For non-trivial engineering work, prefer:
+
+```bash
+e2e intelligence "<task>"
+e2e orchestrate "<task>"
+e2e execute "<task>" --execute
+```
 
 ---
 
 ## Project Status
 
-E2E is an actively developed engineering system. The repository contains an executable runtime and a growing set of architecture, skill, evaluation, verification, and runtime-adapter capabilities.
+The repository is actively building toward production-grade engineering automation.
 
-The implementation roadmap is tracked in [`E2E-PLAN.md`](E2E-PLAN.md). Runtime and system claims should be validated against the repository and CI rather than inferred from this README alone.
+Current foundation includes:
+
+- repository intelligence
+- context and rule precedence
+- specialist skill system
+- SD1 / SD2 / SD3 architecture
+- multi-worker orchestration
+- deterministic guardrails
+- memory and evaluation history
+- regression intelligence
+- runtime adapters
+- MCP tool gateway
+- execution artifacts
+- introspection
+- deterministic evaluation harness
+- CI self-healing
+- repeatable P0-P2 proof gate
+- manual P3-P4 real-agent proof workflow
+
+**Current status: `VALIDATED` only after the proof gate is green. `PROVEN` requires the full production-proof standard.**
 
 ---
 
 ## Contributing
 
-Contributions should preserve the system's architectural boundaries and verification model.
-
-Before making changes:
-
-1. Read [`AGENTS.md`](AGENTS.md).
-2. Review [`CONVENTIONS.md`](CONVENTIONS.md).
-3. Identify the relevant architecture and skill standards.
-4. Keep changes scoped and evidence-based.
-5. Add or update tests for executable behavior.
-6. Run the relevant verification commands.
-7. Do not claim completion without evidence.
+1. Read `AGENTS.md` and `CLAUDE.md`.
+2. Follow the relevant authoring standard.
+3. Keep changes minimal and evidence-based.
+4. Add or update tests for behavioral changes.
+5. Run guardrails and relevant evaluation suites.
+6. Do not weaken tests to make a workflow pass.
+7. Include verification evidence with substantive changes.
 
 ---
 
 ## License
 
-See the repository's license file for licensing terms.
+See [`LICENSE`](LICENSE).
 
 ---
 
 ## Maintainer
 
-**Creativestarjsp**
-
-E2E is maintained as an engineering research and implementation project focused on reliable AI-assisted software development.
+**Creative Star JSP**
