@@ -19,6 +19,7 @@ Existing skills remain canonical. The roadmap expands the system around them; it
                        │                      │
                     CodeBrain              Memory
                        │                      │
+                  Minimality                 │
                        └──────────┬───────────┘
                                   │
                            SD3 Supervisor
@@ -38,24 +39,48 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 
 ## Phase Status
 
-| Phase | Scope | Status | Primary artifacts |
-|---|---|---|---|
-| 1 | Foundation | Complete | BRD, standards, conventions |
-| 2 | Context + Rules | Complete | context/rules architecture |
-| 3 | CodeBrain MVP | Architecture complete | CodeBrain specification and provider contract |
-| 4 | SD1 / SD2 / SD3 | Complete | agent system and runtime agents |
-| 5 | Skills + Registry | Complete | skill standard, registry and composition model |
-| 6 | Tools + Browser | Complete | browser standard and tool model |
-| 7 | Hooks + Memory | Complete | guardrail and memory specifications |
-| 8 | Verification | Complete | verification gates and evidence model |
-| 9 | Runtime Adapters | Complete | Claude/Codex adapter contracts |
-| 10 | Developer Experience | Complete | CLI/status/reporting specification |
-| 11 | Benchmarks | Complete | benchmark methodology |
-| 12 | Production Release | Complete | release and quality gates |
+The architecture for all 12 phases is now finalized with concrete contracts under `architecture/` and `runtime/`. This does **not** claim that every runtime component is already shipped.
 
-**Important:** phases marked "Complete" mean the repository-level architecture, contracts, standards, and integration surfaces are defined and usable by agent runtimes. CodeBrain's parser/graph engine itself remains an implementation project and must not be represented as already shipped.
+| Phase | Architecture | Engineering implementation |
+|---|---|---|
+| 1 | Complete | 🟢 Mostly implemented |
+| 2 | Complete | 🟡 Context/rules runtime pending |
+| 3 | Complete | 🟡 CodeBrain engine pending |
+| 4 | Complete | 🟢 SD1/SD2/SD3 implemented |
+| 5 | Complete | 🟢 Skills / 🟡 executable registry |
+| 6 | Complete | 🟢 Browser / 🟡 broader tool integration |
+| 7 | Complete | 🟡 Hook and memory runtime pending |
+| 8 | Complete | 🟢 Standards / 🟡 automated gate runner pending |
+| 9 | Complete | 🟡 Runtime adapter implementation pending |
+| 10 | Complete | 🔴 CLI/visualization implementation pending |
+| 11 | Complete | 🔴 Benchmark harness/execution pending |
+| 12 | Complete | 🔴 Release automation pending |
 
-## Execution Rules
+## Completed Architecture Contracts
+
+- `architecture/CONTEXT-AND-RULES.md`
+- `architecture/CODEBRAIN.md`
+- `architecture/SKILL-REGISTRY.md`
+- `architecture/HOOKS-AND-GUARDRAILS.md`
+- `architecture/MEMORY.md`
+- `architecture/VERIFICATION.md`
+- `architecture/RUNTIME-ADAPTERS.md`
+- `architecture/DEVELOPER-EXPERIENCE.md`
+- `architecture/BENCHMARKS.md`
+- `architecture/RELEASE-GATES.md`
+- `architecture/MINIMALITY-AND-CORRECTNESS.md`
+
+Executable-facing contracts now live in:
+
+- `runtime/e2e-manifest.yaml`
+- `runtime/profiles.yaml`
+- `runtime/hooks.yaml`
+- `runtime/verification-gates.yaml`
+- `runtime/adapters.yaml`
+- `runtime/benchmark-manifest.yaml`
+- `runtime/release-gates.yaml`
+
+## Engineering Principles
 
 1. Preserve existing skills unless a replacement has passed migration and verification.
 2. Shared domain knowledge lives in `skills/` and `standards/`.
@@ -66,7 +91,9 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 7. Security-sensitive actions require explicit guardrails and verification.
 8. Agents must distinguish facts, inspected evidence, assumptions, and unknowns.
 9. Repeated failure triggers diagnosis and escalation rather than infinite retries.
-10. Documentation and implementation contracts must remain synchronized.
+10. Before implementing, prefer the smallest correct solution: need → reuse → stdlib → native → installed dependency → simple implementation → custom abstraction.
+11. Minimality never removes trust-boundary validation, data-loss protection, security, accessibility, or required correctness.
+12. Benchmark claims must be reproduced with real agentic execution and executed verification, not single-shot prose comparisons alone.
 
 ## Definition of Done
 
@@ -77,6 +104,7 @@ load project context
 → load applicable rules
 → discover relevant skills
 → retrieve targeted code context
+→ apply minimality decision ladder
 → decompose work through SD2
 → execute through SD1
 → verify independently through SD3
@@ -84,4 +112,5 @@ load project context
 → preserve useful memory
 → enforce hooks/guardrails
 → report a reproducible result
+→ satisfy release gates
 ```
