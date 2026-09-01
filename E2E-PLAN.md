@@ -39,22 +39,42 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 
 ## Phase Status
 
-The architecture for all 12 phases is now finalized with concrete contracts under `architecture/` and `runtime/`. This does **not** claim that every runtime component is already shipped.
+All 12 phases now have architecture and a concrete implementation surface. The table below distinguishes implemented runtime foundations from capabilities that still require richer production integrations.
 
 | Phase | Architecture | Engineering implementation |
 |---|---|---|
 | 1 | Complete | 🟢 Mostly implemented |
-| 2 | Complete | 🟡 Context/rules runtime pending |
-| 3 | Complete | 🟡 CodeBrain engine pending |
+| 2 | Complete | 🟢 Context/rules runtime implemented |
+| 3 | Complete | 🟢 Native CodeBrain MVP implemented; Tree-sitter provider remains an enhancement |
 | 4 | Complete | 🟢 SD1/SD2/SD3 implemented |
-| 5 | Complete | 🟢 Skills / 🟡 executable registry |
-| 6 | Complete | 🟢 Browser / 🟡 broader tool integration |
-| 7 | Complete | 🟡 Hook and memory runtime pending |
-| 8 | Complete | 🟢 Standards / 🟡 automated gate runner pending |
-| 9 | Complete | 🟡 Runtime adapter implementation pending |
-| 10 | Complete | 🔴 CLI/visualization implementation pending |
-| 11 | Complete | 🔴 Benchmark harness/execution pending |
-| 12 | Complete | 🔴 Release automation pending |
+| 5 | Complete | 🟢 Skills + executable registry implemented |
+| 6 | Complete | 🟢 Browser skill + 🟡 generic tool adapters remain runtime-specific |
+| 7 | Complete | 🟢 Hooks + memory runtime implemented |
+| 8 | Complete | 🟢 Verification runner implemented; SD3 remains an independent agent decision |
+| 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces implemented |
+| 10 | Complete | 🟢 CLI implemented; visualization remains a future presentation layer |
+| 11 | Complete | 🟢 Reproducible benchmark runner implemented; real multi-agent benchmark execution requires a configured runtime/task corpus |
+| 12 | Complete | 🟢 Automated release gate checker implemented; explicit SD3/owner approval remains required |
+
+## Runtime Implementation
+
+The executable runtime is under `e2e/` and is intentionally dependency-light:
+
+```text
+e2e/
+├── brain.py       CodeBrain MVP
+├── context.py     context + rules loader
+├── skills.py      skill registry/discovery
+├── hooks.py       deterministic guardrails
+├── memory.py      durable scoped memory
+├── verify.py      evidence/verification runner
+├── adapters.py    runtime capability detection
+├── benchmark.py   reproducible benchmark runner
+├── release.py     release gate checker
+└── cli.py         developer CLI
+```
+
+Runtime contracts remain in `runtime/`. Generated state is kept under `.e2e/` and ignored by Git.
 
 ## Completed Architecture Contracts
 
@@ -70,7 +90,7 @@ The architecture for all 12 phases is now finalized with concrete contracts unde
 - `architecture/RELEASE-GATES.md`
 - `architecture/MINIMALITY-AND-CORRECTNESS.md`
 
-Executable-facing contracts now live in:
+## Runtime Contracts
 
 - `runtime/e2e-manifest.yaml`
 - `runtime/profiles.yaml`
@@ -94,6 +114,10 @@ Executable-facing contracts now live in:
 10. Before implementing, prefer the smallest correct solution: need → reuse → stdlib → native → installed dependency → simple implementation → custom abstraction.
 11. Minimality never removes trust-boundary validation, data-loss protection, security, accessibility, or required correctness.
 12. Benchmark claims must be reproduced with real agentic execution and executed verification, not single-shot prose comparisons alone.
+
+## Verification
+
+A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3.
 
 ## Definition of Done
 
