@@ -11,6 +11,7 @@ def capabilities(root: str | Path = ".") -> dict[str, Any]:
     root = Path(root).resolve()
     tools = load_tools(root)
     transports = sorted({tool.transport for tool in tools})
+    gateway = (root / "e2e" / "tool_gateway.py").exists()
     return {
         "terminal": True,
         "filesystem": True,
@@ -19,6 +20,7 @@ def capabilities(root: str | Path = ".") -> dict[str, Any]:
         "browser_visible": False,
         "browser_headless": False,
         "mcp": "mcp" in transports,
+        "mcp_gateway": gateway,
         "registered_tools": len(tools),
         "tool_registry": check_registry(root),
         "subagents": shutil.which("claude") is not None or shutil.which("codex") is not None,
