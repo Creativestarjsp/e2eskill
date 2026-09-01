@@ -9,6 +9,7 @@ from .adapters import capabilities, detect
 from .benchmark import run_case
 from .brain import CodeBrain
 from .context import build_context
+from .executor import execute
 from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
     r = sub.add_parser("run"); r.add_argument("task")
     o = sub.add_parser("orchestrate"); o.add_argument("task")
+    e = sub.add_parser("execute"); e.add_argument("task"); e.add_argument("--runtime", choices=("auto", "claude-code", "codex"), default="auto"); e.add_argument("--execute", dest="execute_agents", action="store_true", help="Actually launch SD1/SD3 agents; default is dry-run"); e.add_argument("--max-workers", type=int, default=4)
     v = sub.add_parser("verify"); v.add_argument("--test", dest="test_command")
     be = sub.add_parser("benchmark"); be.add_argument("command"); be.add_argument("--repetitions", type=int, default=1)
     args = p.parse_args(argv)
@@ -58,6 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd in {"run", "orchestrate"}:
         result = write_plan(root, args.task)
         print(json.dumps(result, indent=2)); return 0
+    if args.cmd == "execute":
+        result = execute(root, args.task, runtime=args.runtime, execute_agents=args.execute_agents, max_workers=max(1, min(args.max_workers, 4)))
+        print(json.dumps(result, indent=2)); return 0 if result["status"] not in {"worker-failure", "supervisor-failure", "blocked-dependency-cycle"} else 1
     if args.cmd == "verify":
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "benchmark":
