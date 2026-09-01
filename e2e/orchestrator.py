@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import time
 from pathlib import Path
 from typing import Any
@@ -27,7 +26,7 @@ def _phase(skill: str) -> str:
         return "implementation"
     if any(x in name for x in ("security", "qa", "code-review")):
         return "verification"
-    if any(x in name for x in ("devops",)):
+    if "devops" in name:
         return "delivery"
     return "implementation"
 
@@ -44,9 +43,8 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
 
     workers = []
     for index, skill in enumerate(matched[:MAX_ACTIVE_WORKERS], start=1):
-        worker_id = _id(task, skill["name"], index)
         workers.append({
-            "id": worker_id,
+            "id": _id(task, skill["name"], index),
             "role": "SD1",
             "skill": skill["name"],
             "phase": _phase(skill["name"]),
@@ -57,16 +55,15 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         })
 
     foundation = [w["id"] for w in workers if w["phase"] == "foundation"]
+    implementation = [w["id"] for w in workers if w["phase"] in {"foundation", "implementation", "delivery"}]
     verification = [w["id"] for w in workers if w["phase"] == "verification"]
     for worker in workers:
-        if worker["phase"] in {"implementation", "delivery"} and foundation:
-            worker["depends_on"] = foundation
+        if worker["phase"] in {"implementation", "delivery"}:
+            worker["depends_on"] = foundation.copy()
+        elif worker["phase"] == "verification":
+            worker["depends_on"] = [x for x in implementation if x != worker["id"]]
         else:
             worker["depends_on"] = []
-    if verification:
-        for worker in workers:
-            if worker["id"] not in verification:
-                worker.setdefault("depends_on", []).extend(verification if worker["phase"] == "delivery" else [])
 
     return {
         "plan_id": hashlib.sha1(f"{task}:{time.time_ns()}".encode()).hexdigest()[:12],
