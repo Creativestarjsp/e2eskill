@@ -151,7 +151,7 @@ The correction loop is bounded at two rounds. Failed workers, merge conflicts, m
 
 ## Verification
 
-A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3. GitHub Actions provides workflow-run and job status visibility for this verification process. citeturn0search0
+A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3.
 
 ## Definition of Done
 
