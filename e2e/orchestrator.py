@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import time
+from pathlib import Path
+from typing import Any
+
+from .brain import CodeBrain
+from .context import build_context
+from .skills import match
+
+MAX_ACTIVE_WORKERS = 4
+
+
+def _id(task: str, skill: str, index: int) -> str:
+    raw = f"{task}:{skill}:{index}".encode()
+    return "sd1-" + hashlib.sha1(raw).hexdigest()[:10]
+
+
+def _phase(skill: str) -> str:
+    name = skill.lower()
+    if any(x in name for x in ("architect", "database", "api")):
+        return "foundation"
+    if any(x in name for x in ("frontend", "react", "native", "expo", "ui-ux")):
+        return "implementation"
+    if any(x in name for x in ("security", "qa", "code-review")):
+        return "verification"
+    if any(x in name for x in ("devops",)):
+        return "delivery"
+    return "implementation"
+
+
+def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[str, Any]:
+    root = Path(root).resolve()
+    brain = brain or CodeBrain(root)
+    if not brain.store.exists():
+        brain.build()
+    context = build_context(root, task, brain)
+    matched = match(root, task)
+    if not matched:
+        matched = [{"name": "software-architect", "path": "skills/software-architect/SKILL.md", "purpose": "Clarify architecture and implementation boundaries.", "triggers": "ambiguous engineering tasks"}]
+
+    workers = []
+    for index, skill in enumerate(matched[:MAX_ACTIVE_WORKERS], start=1):
+        worker_id = _id(task, skill["name"], index)
+        workers.append({
+            "id": worker_id,
+            "role": "SD1",
+            "skill": skill["name"],
+            "phase": _phase(skill["name"]),
+            "objective": f"Execute the {skill['name']} work required by: {task}",
+            "inputs": {"task": task, "context": context},
+            "outputs": ["implementation", "verification-evidence", "risks", "handoff"],
+            "status": "ready",
+        })
+
+    foundation = [w["id"] for w in workers if w["phase"] == "foundation"]
+    verification = [w["id"] for w in workers if w["phase"] == "verification"]
+    for worker in workers:
+        if worker["phase"] in {"implementation", "delivery"} and foundation:
+            worker["depends_on"] = foundation
+        else:
+            worker["depends_on"] = []
+    if verification:
+        for worker in workers:
+            if worker["id"] not in verification:
+                worker.setdefault("depends_on", []).extend(verification if worker["phase"] == "delivery" else [])
+
+    return {
+        "plan_id": hashlib.sha1(f"{task}:{time.time_ns()}".encode()).hexdigest()[:12],
+        "role": "SD2",
+        "task": task,
+        "max_active_workers": MAX_ACTIVE_WORKERS,
+        "context": context,
+        "workers": workers,
+        "supervisor_gate": {
+            "role": "SD3",
+            "required": True,
+            "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence"],
+            "decision": "pending-runtime-agent-review",
+        },
+        "policy": {
+            "parallelize": True,
+            "do_not_exceed_worker_limit": True,
+            "no_blind_retries": True,
+            "escalate_architectural_blockers": True,
+        },
+    }
+
+
+def write_plan(root: str | Path, task: str) -> dict[str, Any]:
+    root = Path(root).resolve()
+    result = plan(root, task)
+    out = root / ".e2e" / "plans"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{result['plan_id']}.json"
+    path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+    result["plan_path"] = path.relative_to(root).as_posix()
+    return result
