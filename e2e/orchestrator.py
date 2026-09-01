@@ -44,6 +44,29 @@ def _skill_by_name(skills: list[dict[str, Any]], name: str) -> dict[str, Any] | 
     return next((skill for skill in skills if skill.get("name") == name), None)
 
 
+def _prioritize_regression_workers(matched: list[dict[str, Any]], regression: dict[str, Any], available: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if regression["level"] == "low":
+        return matched
+    result = list(matched)
+    qa = _skill_by_name(available, "qa-engineer")
+    security = _skill_by_name(available, "security-engineer") if regression["level"] == "high" else None
+    for required in (qa, security):
+        if required and required["name"] in {s["name"] for s in result}:
+            continue
+        if required:
+            if len(result) >= MAX_ACTIVE_WORKERS:
+                result[-1] = required
+            else:
+                result.append(required)
+    deduped = []
+    seen = set()
+    for skill in result:
+        if skill["name"] not in seen:
+            seen.add(skill["name"])
+            deduped.append(skill)
+    return deduped
+
+
 def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
     brain = brain or CodeBrain(root)
@@ -58,15 +81,9 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
     if not matched:
         matched = [{"name": "software-architect", "path": "skills/software-architect/SKILL.md", "purpose": "Clarify architecture and implementation boundaries.", "triggers": "ambiguous engineering tasks"}]
 
+    available = discover(root)
     regression = analyze_regression_risk(root, task)
-    if regression["level"] in {"medium", "high"}:
-        qa = _skill_by_name(discover(root), "qa-engineer")
-        if qa and qa["name"] not in {s["name"] for s in matched}:
-            matched.append(qa)
-    if regression["level"] == "high":
-        security = _skill_by_name(discover(root), "security-engineer")
-        if security and security["name"] not in {s["name"] for s in matched}:
-            matched.append(security)
+    matched = _prioritize_regression_workers(matched, regression, available)
 
     workers = []
     for index, skill in enumerate(matched[:MAX_ACTIVE_WORKERS], start=1):
