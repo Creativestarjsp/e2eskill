@@ -44,12 +44,23 @@ def _skill_by_name(skills: list[dict[str, Any]], name: str) -> dict[str, Any] | 
     return next((skill for skill in skills if skill.get("name") == name), None)
 
 
+def _fallback_skill(name: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "path": f"skills/{name}/SKILL.md",
+        "purpose": f"Provide {name} responsibilities required by the execution plan.",
+        "triggers": "runtime-required specialist escalation",
+    }
+
+
 def _prioritize_regression_workers(matched: list[dict[str, Any]], regression: dict[str, Any], available: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if regression["level"] == "low":
         return matched
     result = list(matched)
-    qa = _skill_by_name(available, "qa-engineer")
-    security = _skill_by_name(available, "security-engineer") if regression["level"] == "high" else None
+    qa = _skill_by_name(available, "qa-engineer") or _fallback_skill("qa-engineer")
+    security = None
+    if regression["level"] == "high":
+        security = _skill_by_name(available, "security-engineer") or _fallback_skill("security-engineer")
     for required in (qa, security):
         if required and required["name"] in {s["name"] for s in result}:
             continue
