@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -27,7 +28,7 @@ def _repo_read(root: Path, arguments: JSON) -> JSON:
     path = _safe_path(root, str(arguments.get("path", "")))
     if not path.is_file():
         raise ToolGatewayError("file-not-found")
-    max_bytes = min(int(arguments.get("max_bytes", 200_000)), 200_000)
+    max_bytes = min(max(int(arguments.get("max_bytes", 200_000)), 1), 200_000)
     return {"path": str(path.relative_to(root)), "content": path.read_text(encoding="utf-8")[:max_bytes]}
 
 
@@ -73,12 +74,23 @@ def _tool_schema(name: str, description: str) -> JSON:
 
 
 def visible_tools(root: Path, role: str) -> list[JSON]:
-    result = []
-    for tool in load_tools(root):
-        if role not in tool.roles or tool.approval != "none" or tool.name not in HANDLERS:
-            continue
-        result.append(_tool_schema(tool.name, tool.description))
-    return sorted(result, key=lambda item: item["name"])
+    return sorted(
+        [_tool_schema(tool.name, tool.description) for tool in load_tools(root) if role in tool.roles and tool.approval == "none" and tool.name in HANDLERS],
+        key=lambda item: item["name"],
+    )
+
+
+def write_mcp_configs(root: str | Path, role: str = "sd1") -> dict[str, str]:
+    root_path = Path(root).resolve()
+    config_dir = root_path / ".e2e" / "mcp"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    command = sys.executable
+    args = ["-m", "e2e.tool_gateway", "--root", str(root_path), "--role", role]
+    claude_path = config_dir / "claude.json"
+    claude_path.write_text(json.dumps({"mcpServers": {"e2e-gateway": {"command": command, "args": args, "env": {"E2E_TOOL_ROLE": role}}}}, indent=2, sort_keys=True), encoding="utf-8")
+    codex_path = config_dir / "codex.toml"
+    codex_path.write_text("[mcp_servers.e2e-gateway]\n" f"command = {json.dumps(command)}\n" f"args = {json.dumps(args)}\n" "enabled = true\nrequired = true\n", encoding="utf-8")
+    return {"claude": str(claude_path), "codex": str(codex_path)}
 
 
 def _response(request_id: Any, result: JSON | None = None, error: JSON | None = None) -> JSON:
@@ -101,7 +113,6 @@ def handle(root: Path, role: str, request: JSON) -> JSON | None:
         return _response(request_id, {"tools": visible_tools(root, role)})
     if method != "tools/call":
         return _response(request_id, error={"code": -32601, "message": "method not found"})
-
     params = request.get("params") or {}
     name = str(params.get("name", ""))
     arguments = params.get("arguments") or {}
@@ -131,13 +142,24 @@ def serve(root: str | Path = ".", role: str | None = None) -> int:
         if not line.strip():
             continue
         try:
-            request = json.loads(line)
-            response = handle(root_path, selected_role, request)
+            response = handle(root_path, selected_role, json.loads(line))
         except json.JSONDecodeError:
             response = _response(None, error={"code": -32700, "message": "parse error"})
-        except Exception as exc:  # gateway must never crash the host runtime
+        except Exception as exc:
             response = _response(None, error={"code": -32603, "message": str(exc)})
         if response is not None:
             sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             sys.stdout.flush()
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="e2e-mcp-gateway")
+    parser.add_argument("--root", default=".")
+    parser.add_argument("--role", default=os.environ.get("E2E_TOOL_ROLE", "sd1"))
+    args = parser.parse_args()
+    return serve(args.root, args.role)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
