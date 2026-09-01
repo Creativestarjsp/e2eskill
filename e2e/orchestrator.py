@@ -9,6 +9,7 @@ from typing import Any
 from .brain import CodeBrain
 from .context import build_context
 from .intelligence import build_intelligence
+from .regression import analyze_regression_risk
 from .skills import discover, match
 
 MAX_ACTIVE_WORKERS = 4
@@ -39,6 +40,10 @@ def _needs_research(task: str) -> bool:
     return any(term in task.lower().split() for term in terms)
 
 
+def _skill_by_name(skills: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
+    return next((skill for skill in skills if skill.get("name") == name), None)
+
+
 def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
     brain = brain or CodeBrain(root)
@@ -52,6 +57,16 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
             matched.insert(0, research)
     if not matched:
         matched = [{"name": "software-architect", "path": "skills/software-architect/SKILL.md", "purpose": "Clarify architecture and implementation boundaries.", "triggers": "ambiguous engineering tasks"}]
+
+    regression = analyze_regression_risk(root, task)
+    if regression["level"] in {"medium", "high"}:
+        qa = _skill_by_name(discover(root), "qa-engineer")
+        if qa and qa["name"] not in {s["name"] for s in matched}:
+            matched.append(qa)
+    if regression["level"] == "high":
+        security = _skill_by_name(discover(root), "security-engineer")
+        if security and security["name"] not in {s["name"] for s in matched}:
+            matched.append(security)
 
     workers = []
     for index, skill in enumerate(matched[:MAX_ACTIVE_WORKERS], start=1):
@@ -85,8 +100,16 @@ def plan(root: str | Path, task: str, brain: CodeBrain | None = None) -> dict[st
         "context": context,
         "workers": workers,
         "preflight": {"research_first": _needs_research(task), "rule": "research before custom implementation when existing solutions may exist"},
-        "supervisor_gate": {"role": "SD3", "required": True, "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence", "agent-evaluation"], "decision": "pending-runtime-agent-review"},
-        "policy": {"parallelize": True, "do_not_exceed_worker_limit": True, "no_blind_retries": True, "escalate_architectural_blockers": True, "evaluate_non_trivial_runs": True},
+        "regression": regression,
+        "supervisor_gate": {"role": "SD3", "required": True, "checks": ["requirements", "architecture", "integration", "tests", "security", "evidence", "agent-evaluation", "regression"], "decision": "pending-runtime-agent-review"},
+        "policy": {
+            "parallelize": True,
+            "do_not_exceed_worker_limit": True,
+            "no_blind_retries": True,
+            "escalate_architectural_blockers": True,
+            "evaluate_non_trivial_runs": True,
+            "regression_aware": True,
+        },
     }
     draft["intelligence"] = build_intelligence(root, task, draft)
     return draft
