@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install E2E
-        run: python -m pip install -e .
+      - name: Install E2E and test tooling
+        run: python -m pip install -e . pytest
       - name: Run tests
         run: python -m pytest -q
       - name: Build CodeBrain
