@@ -1,0 +1,21 @@
+adapters:
+  claude-code:
+    instruction_file: CLAUDE.md
+    skills_path: skills/
+    agent_path: .claude/agents/
+    hooks: runtime/hooks.yaml
+    manifest: runtime/e2e-manifest.yaml
+
+  codex:
+    instruction_file: AGENTS.md
+    skills_path: skills/
+    agent_path: .codex/agents/
+    hooks: runtime/hooks.yaml
+    manifest: runtime/e2e-manifest.yaml
+
+adapter_rules:
+  shared_behavior: skills+standards+runtime-manifest
+  host_specific_behavior: adapter-only
+  duplication: prohibited
+  capability_detection: required
+  unsupported_capability: report-and-degrade
