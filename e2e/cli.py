@@ -10,6 +10,7 @@ from .benchmark import run_case
 from .brain import CodeBrain
 from .context import build_context
 from .executor import execute
+from .guardrails import check as check_guardrails, policy as guardrail_policy, write_policy as write_guardrail_policy
 from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
@@ -33,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("context"); c.add_argument("task")
     s = sub.add_parser("skill"); ss = s.add_subparsers(dest="skill_cmd", required=True); ss.add_parser("list"); si = ss.add_parser("inspect"); si.add_argument("name")
     t = sub.add_parser("tool"); ts = t.add_subparsers(dest="tool_cmd", required=True); ts.add_parser("list"); ts.add_parser("check"); ti = ts.add_parser("inspect"); ti.add_argument("name"); tp = ts.add_parser("policy"); tp.add_argument("role", choices=("sd1", "sd2", "sd3")); tg = ts.add_parser("gateway"); tg.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1"); tg.add_argument("--serve", action="store_true")
+    g = sub.add_parser("guardrails"); gs = g.add_subparsers(dest="guardrail_cmd", required=True); gs.add_parser("policy"); gc = gs.add_parser("check"); gc.add_argument("--stage", choices=("pre-edit", "pre-commit", "pre-merge", "verification"), default="verification"); gw = gs.add_parser("write")
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
     r = sub.add_parser("run"); r.add_argument("task")
     o = sub.add_parser("orchestrate"); o.add_argument("task")
@@ -66,6 +68,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.serve: return serve(root, args.role)
             print(json.dumps(configs, indent=2)); return 0
         found = next((tool for tool in tools if tool.name == args.name), None); print(json.dumps(found.__dict__ if found else {"error":"tool-not-found"}, indent=2)); return 0 if found else 1
+    if args.cmd == "guardrails":
+        if args.guardrail_cmd == "policy": print(json.dumps(guardrail_policy(), indent=2)); return 0
+        if args.guardrail_cmd == "write": print(str(write_guardrail_policy(root))); return 0
+        result = check_guardrails(root, args.stage); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "brain":
         brain = CodeBrain(root)
         if args.brain_cmd == "build": print(json.dumps({"indexed_files": len(brain.build()["files"])}, indent=2)); return 0
