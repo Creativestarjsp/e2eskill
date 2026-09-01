@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .orchestrator import plan
+from .tools import write_policy
 from .worktree import WorktreeError, WorkerWorkspace, commit_changes, create, ensure_clean, merge, remove
 
 
@@ -38,14 +39,16 @@ def runtime_available(runtime: str) -> bool:
     return False
 
 
-def _prompt(task: str, worker: dict[str, Any]) -> str:
+def _prompt(task: str, worker: dict[str, Any], policy_path: str | None = None) -> str:
     context = json.dumps(worker.get("inputs", {}).get("context", {}), ensure_ascii=False, indent=2)
-    return f"""You are an SD1 worker in the E2E engineering system.\n\nROLE: {worker['skill']}\nWORKER: {worker['id']}\nPHASE: {worker['phase']}\nTASK: {task}\n\nExecute only the assigned responsibility. Investigate the repository before editing. Reuse existing code and dependencies before adding new ones. Do not claim work you did not perform. Preserve security, data integrity, accessibility, and existing behavior. Work only inside the provided isolated workspace. Do not modify or inspect sibling worktrees. Do not create commits unless the runtime requires it.\n\nPROJECT CONTEXT:\n{context}\n\nWhen finished, report: changed files, implementation summary, commands/tests run, evidence, risks, and remaining work. If blocked, explain the concrete blocker and stop rather than inventing a workaround."""
+    policy = f"\nTOOL POLICY: {policy_path}\nRead this policy before using tools. Default is deny. Do not use approval-required tools without explicit approval. The policy describes E2E's intended tool boundary; runtime-level enforcement must remain enabled when available." if policy_path else ""
+    return f"""You are an SD1 worker in the E2E engineering system.\n\nROLE: {worker['skill']}\nWORKER: {worker['id']}\nPHASE: {worker['phase']}\nTASK: {task}\n{policy}\n\nExecute only the assigned responsibility. Investigate the repository before editing. Reuse existing code and dependencies before adding new ones. Do not claim work you did not perform. Preserve security, data integrity, accessibility, and existing behavior. Work only inside the provided isolated workspace. Do not modify or inspect sibling worktrees. Do not create commits unless the runtime requires it.\n\nPROJECT CONTEXT:\n{context}\n\nWhen finished, report: changed files, implementation summary, commands/tests run, evidence, risks, and remaining work. If blocked, explain the concrete blocker and stop rather than inventing a workaround."""
 
 
-def _supervisor_prompt(task: str, results: list[dict[str, Any]], correction_round: int = 0) -> str:
+def _supervisor_prompt(task: str, results: list[dict[str, Any]], correction_round: int = 0, policy_path: str | None = None) -> str:
     evidence = json.dumps(results, ensure_ascii=False, indent=2)
-    return f"""You are the SD3 Engineering Supervisor. Independently inspect the integrated repository after SD1 execution for this task: {task}.\n\nCORRECTION ROUND: {correction_round}\n\nSD1 REPORTS:\n{evidence}\n\nDo not trust worker claims without inspecting the actual files and running appropriate verification. Check requirements, architecture, integration, tests, security, regressions, and evidence. Fix nothing. Return valid JSON only with this shape:\n{{\"decision\":\"approved|needs-correction|rejected\",\"evidence\":[\"...\"],\"failed_checks\":[\"...\"],\"correction_tasks\":[{{\"task\":\"specific corrective task\",\"skill\":\"best specialist skill\"}}],\"next_actions\":[\"...\"]}}\n\nUse needs-correction when concrete fixable work remains. Use rejected when the architecture/requirements are fundamentally unacceptable. Keep correction_tasks minimal and actionable. If approved, correction_tasks must be empty."""
+    policy = f"\nTOOL POLICY: {policy_path}\nUse only the read/verification capabilities allowed to SD3. Do not mutate the repository or external systems through tools." if policy_path else ""
+    return f"""You are the SD3 Engineering Supervisor. Independently inspect the integrated repository after SD1 execution for this task: {task}.\n\nCORRECTION ROUND: {correction_round}\n{policy}\n\nSD1 REPORTS:\n{evidence}\n\nDo not trust worker claims without inspecting the actual files and running appropriate verification. Check requirements, architecture, integration, tests, security, regressions, and evidence. Fix nothing. Return valid JSON only with this shape:\n{{\"decision\":\"approved|needs-correction|rejected\",\"evidence\":[\"...\"],\"failed_checks\":[\"...\"],\"correction_tasks\":[{{\"task\":\"specific corrective task\",\"skill\":\"best specialist skill\"}}],\"next_actions\":[\"...\"]}}\n\nUse needs-correction when concrete fixable work remains. Use rejected when the architecture/requirements are fundamentally unacceptable. Keep correction_tasks minimal and actionable. If approved, correction_tasks must be empty."""
 
 
 def _parse_supervisor_output(stdout: str) -> dict[str, Any]:
@@ -65,8 +68,9 @@ def _run_worker(root: Path, task: str, runtime: str, worker: dict[str, Any], bas
     workspace: WorkerWorkspace | None = None
     try:
         workspace = create(root, worker["id"], base_ref=base_ref)
+        policy_path = write_policy(workspace.path, "sd1")
         proc = subprocess.run(
-            _command(runtime, _prompt(task, worker)),
+            _command(runtime, _prompt(task, worker, policy_path.relative_to(workspace.path).as_posix())),
             cwd=workspace.path,
             text=True,
             capture_output=True,
@@ -79,6 +83,7 @@ def _run_worker(root: Path, task: str, runtime: str, worker: dict[str, Any], bas
         return {
             "id": worker["id"], "skill": worker["skill"], "phase": worker["phase"],
             "workspace": str(workspace.path), "branch": workspace.branch, "commit": commit_sha,
+            "tool_policy": str(policy_path.relative_to(workspace.path)),
             "returncode": proc.returncode, "stdout": proc.stdout[-12000:], "stderr": proc.stderr[-12000:],
             "duration_seconds": round(time.time() - started, 3), "status": status,
         }, workspace
@@ -122,8 +127,9 @@ def _correction_worker(root: Path, task: str, skill: str, runtime: str, round_no
 
 def _supervise(root: Path, task: str, runtime: str, workers: list[dict[str, Any]], correction_round: int) -> dict[str, Any]:
     started = time.time()
+    policy_path = write_policy(root, "sd3")
     proc = subprocess.run(
-        _command(runtime, _supervisor_prompt(task, workers, correction_round)),
+        _command(runtime, _supervisor_prompt(task, workers, correction_round, policy_path.relative_to(root).as_posix())),
         cwd=root, text=True, capture_output=True,
         timeout=int(os.environ.get("E2E_AGENT_TIMEOUT", "1800")),
     )
@@ -133,6 +139,7 @@ def _supervise(root: Path, task: str, runtime: str, workers: list[dict[str, Any]
         "stdout": proc.stdout[-16000:], "stderr": proc.stderr[-12000:],
         "duration_seconds": round(time.time() - started, 3),
         "status": "completed" if proc.returncode == 0 else "failed", "report": report,
+        "tool_policy": str(policy_path.relative_to(root)),
     }
 
 
@@ -238,26 +245,31 @@ def execute(root: str | Path, task: str, runtime: str = "auto", execute_agents: 
             base_ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
             for item in tasks[:1]:
                 correction_task = str(item.get("task", "Fix SD3-identified issues"))
-                skill = str(item.get("skill", "software-architect"))
-                result, workspace = _correction_worker(root, correction_task, skill, selected, correction_round + 1, base_ref)
-                result["correction_round"] = correction_round + 1
+                correction_skill = str(item.get("skill", "software-architect"))
+                result, workspace = _correction_worker(root, correction_task, correction_skill, selected, correction_round + 1, base_ref)
                 execution["corrections"].append(result)
                 if result["status"] != "completed" or workspace is None:
                     execution["status"] = "correction-worker-failure"
-                    if workspace: preserved_workspaces.append(str(workspace.path))
+                    if workspace: execution.setdefault("preserved_workspaces", []).append(str(workspace.path))
                     break
                 ok, merged_sha = _merge_workspace(root, workspace, result["id"])
                 result["merged"] = ok; result["integrated_commit"] = merged_sha
                 if not ok:
-                    execution["status"] = "correction-merge-conflict"; preserved_workspaces.append(str(workspace.path)); break
+                    execution["status"] = "correction-merge-conflict"
+                    execution.setdefault("preserved_workspaces", []).append(str(workspace.path))
+                    break
                 try: remove(root, workspace)
-                except WorktreeError: preserved_workspaces.append(str(workspace.path))
+                except WorktreeError: execution.setdefault("preserved_workspaces", []).append(str(workspace.path))
                 execution["brain_refresh"] = _refresh_brain(root)
+                break
             if execution.get("status"): break
 
+    if execution.get("status") is None:
+        execution["status"] = "completed-without-supervisor"
     execution["finished_at"] = time.time()
-    out = root / ".e2e" / "executions"; out.mkdir(parents=True, exist_ok=True)
-    path = out / f"{int(execution['started_at'] * 1000)}.json"
-    path.write_text(json.dumps(execution, indent=2, ensure_ascii=False), encoding="utf-8")
+    out = root / ".e2e" / "executions"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{int(execution['finished_at'] * 1000)}.json"
+    path.write_text(json.dumps(execution, indent=2, sort_keys=True), encoding="utf-8")
     execution["report_path"] = path.relative_to(root).as_posix()
     return execution
