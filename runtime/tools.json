@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "default_policy": "deny",
+  "tools": [
+    {
+      "name": "repo.read",
+      "description": "Read repository files and metadata.",
+      "transport": "native",
+      "risk": "read",
+      "scopes": ["repo.read"],
+      "roles": ["sd1", "sd2", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "git.read",
+      "description": "Inspect Git history, status, branches, and diffs.",
+      "transport": "native",
+      "risk": "read",
+      "scopes": ["git.read"],
+      "roles": ["sd1", "sd2", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "git.write",
+      "description": "Create commits, branches, or other Git mutations.",
+      "transport": "native",
+      "risk": "write",
+      "scopes": ["git.write"],
+      "roles": ["sd1", "sd2"],
+      "approval": "explicit"
+    },
+    {
+      "name": "shell.read",
+      "description": "Run read-only inspection commands.",
+      "transport": "native",
+      "risk": "read",
+      "scopes": ["shell.read"],
+      "roles": ["sd1", "sd2", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "shell.write",
+      "description": "Run commands that may modify the workspace.",
+      "transport": "native",
+      "risk": "write",
+      "scopes": ["shell.write"],
+      "roles": ["sd1"],
+      "approval": "explicit"
+    },
+    {
+      "name": "browser.read",
+      "description": "Inspect pages using the browser execution layer.",
+      "transport": "mcp",
+      "risk": "network",
+      "scopes": ["browser.read", "network.read"],
+      "roles": ["sd1", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "browser.write",
+      "description": "Interact with pages using the browser execution layer.",
+      "transport": "mcp",
+      "risk": "network",
+      "scopes": ["browser.write", "network.write"],
+      "roles": ["sd1"],
+      "approval": "explicit"
+    },
+    {
+      "name": "network.read",
+      "description": "Read external HTTP resources required by a task.",
+      "transport": "mcp",
+      "risk": "network",
+      "scopes": ["network.read"],
+      "roles": ["sd1", "sd2", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "db.read",
+      "description": "Read database metadata or records within an approved environment.",
+      "transport": "mcp",
+      "risk": "read",
+      "scopes": ["db.read"],
+      "roles": ["sd1", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "db.write",
+      "description": "Modify database state within an approved environment.",
+      "transport": "mcp",
+      "risk": "destructive",
+      "scopes": ["db.write"],
+      "roles": ["sd1"],
+      "approval": "explicit"
+    },
+    {
+      "name": "secrets.use",
+      "description": "Use a secret through a runtime-managed secret reference without exposing its value.",
+      "transport": "runtime",
+      "risk": "secret",
+      "scopes": ["secrets.use"],
+      "roles": ["sd1"],
+      "approval": "explicit"
+    },
+    {
+      "name": "github.read",
+      "description": "Read approved GitHub repository resources through a connected GitHub integration.",
+      "transport": "mcp",
+      "risk": "read",
+      "scopes": ["network.read", "repo.read"],
+      "roles": ["sd1", "sd2", "sd3"],
+      "approval": "none"
+    },
+    {
+      "name": "github.write",
+      "description": "Mutate approved GitHub resources through a connected GitHub integration.",
+      "transport": "mcp",
+      "risk": "write",
+      "scopes": ["network.write", "repo.write"],
+      "roles": ["sd1", "sd2"],
+      "approval": "explicit"
+    }
+  ]
+}
