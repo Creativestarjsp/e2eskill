@@ -32,33 +32,29 @@ Existing skills remain canonical. The roadmap expands the system around them; it
                          │        │        │
                     Specialist Skills
                          │
-                    Tools / Runtime
+                  Tool Capability Layer
                          │
-                 Claude Code / Codex / future runtimes
+                 Claude Code / Codex / MCP
 ```
 
 ## Phase Status
-
-All 12 phases have architecture and a concrete implementation surface. The table below distinguishes implemented runtime foundations from capabilities that still require richer production integrations.
 
 | Phase | Architecture | Engineering implementation |
 |---|---|---|
 | 1 | Complete | 🟢 Mostly implemented |
 | 2 | Complete | 🟢 Context/rules runtime implemented |
-| 3 | Complete | 🟢 Native CodeBrain MVP implemented; Tree-sitter provider remains an enhancement |
-| 4 | Complete | 🟢 SD1/SD2/SD3 execution implemented with isolated worktrees and bounded correction loop |
+| 3 | Complete | 🟢 Native CodeBrain MVP + optional Tree-sitter provider |
+| 4 | Complete | 🟢 SD1/SD2/SD3 execution with isolated worktrees and bounded correction loop |
 | 5 | Complete | 🟢 Skills + executable registry implemented |
-| 6 | Complete | 🟢 Browser skill + 🟡 generic tool adapters remain runtime-specific |
+| 6 | Complete | 🟢 Tool registry, scopes, approval policy, audit ledger, MCP boundary implemented |
 | 7 | Complete | 🟢 Hooks + memory runtime implemented |
-| 8 | Complete | 🟢 Verification runner implemented; SD3 now has structured independent review and correction decisions |
-| 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces implemented |
-| 10 | Complete | 🟢 CLI implemented; visualization remains a future presentation layer |
-| 11 | Complete | 🟢 Reproducible benchmark runner implemented; real multi-agent benchmark execution requires a configured runtime/task corpus |
-| 12 | Complete | 🟢 Automated release gate checker implemented; explicit SD3/owner approval remains required |
+| 8 | Complete | 🟢 Verification runner + independent SD3 review/correction |
+| 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces |
+| 10 | Complete | 🟢 CLI implemented; visualization remains future presentation layer |
+| 11 | Complete | 🟢 Reproducible benchmark runner |
+| 12 | Complete | 🟢 Automated release gate checker; explicit SD3/owner approval remains required |
 
 ## Runtime Implementation
-
-The executable runtime is under `e2e/` and is intentionally dependency-light:
 
 ```text
 e2e/
@@ -69,15 +65,42 @@ e2e/
 ├── memory.py      durable scoped memory
 ├── verify.py      evidence/verification runner
 ├── adapters.py    runtime capability detection
+├── tools.py       tool registry + policy + audit
 ├── orchestrator.py SD2 planning and dependency graph
 ├── worktree.py    isolated SD1 Git workspaces
 ├── executor.py    SD1 execution + integration + SD3 review/correction
 ├── benchmark.py   reproducible benchmark runner
 ├── release.py     release gate checker
 └── cli.py         developer CLI
+
+runtime/
+└── tools.json     controlled capability registry
+
+architecture/
+└── TOOL-SYSTEM.md tool/MCP architecture and security boundary
 ```
 
-Runtime contracts remain in `runtime/`. Generated state is kept under `.e2e/` and ignored by Git.
+Generated state remains under `.e2e/` and is ignored by Git. Tool audit records are append-only JSONL and fingerprint argument payloads rather than storing secret values.
+
+## Tool / MCP Contract
+
+```text
+Agent
+ ↓
+Tool Registry
+ ↓
+Role + Scope + Approval Policy
+ ↓
+Runtime/MCP Adapter
+ ↓
+External Tool
+ ↓
+Audit + Evidence
+ ↓
+SD3 Inspection
+```
+
+Unknown capabilities are denied by default. Mutation, destructive, and secret-bearing capabilities require explicit approval. MCP is an interoperability layer, not the E2E authorization boundary.
 
 ## SD1 / SD2 / SD3 Execution Contract
 
@@ -90,7 +113,7 @@ dependency-ready SD1 workers
  ↓
 isolated worktrees (max 4 active)
  ↓
-worker evidence
+worker evidence + tool ledger
  ↓
 deterministic integration
  ↓
@@ -123,16 +146,7 @@ The correction loop is bounded at two rounds. Failed workers, merge conflicts, m
 - `architecture/BENCHMARKS.md`
 - `architecture/RELEASE-GATES.md`
 - `architecture/MINIMALITY-AND-CORRECTNESS.md`
-
-## Runtime Contracts
-
-- `runtime/e2e-manifest.yaml`
-- `runtime/profiles.yaml`
-- `runtime/hooks.yaml`
-- `runtime/verification-gates.yaml`
-- `runtime/adapters.yaml`
-- `runtime/benchmark-manifest.yaml`
-- `runtime/release-gates.yaml`
+- `architecture/TOOL-SYSTEM.md`
 
 ## Engineering Principles
 
@@ -147,15 +161,17 @@ The correction loop is bounded at two rounds. Failed workers, merge conflicts, m
 9. Repeated failure triggers diagnosis and escalation rather than infinite retries.
 10. Before implementing, prefer the smallest correct solution: need → reuse → stdlib → native → installed dependency → simple implementation → custom abstraction.
 11. Minimality never removes trust-boundary validation, data-loss protection, security, accessibility, or required correctness.
-12. Benchmark claims must be reproduced with real agentic execution and executed verification, not single-shot prose comparisons alone.
+12. Tool permissions are capability-based and deny-by-default.
+13. Tool audit evidence must never persist raw secrets.
+14. Benchmark claims must be reproduced with real agentic execution and executed verification.
 
 ## Verification
 
-A CI workflow runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3.
+CI runs the Python runtime tests and smoke-checks CodeBrain and status. Real repository tasks should still be evaluated by the configured Claude/Codex runtime and independently approved by SD3.
 
 ## Definition of Done
 
-The E2E system is production-ready when a supported runtime can:
+A supported runtime should be able to:
 
 ```text
 load project context
@@ -165,10 +181,11 @@ load project context
 → apply minimality decision ladder
 → decompose work through SD2
 → execute through SD1 in isolated workspaces
+→ request only approved tool capabilities
+→ record tool evidence
 → integrate safely
 → verify independently through SD3
 → perform bounded corrections when necessary
-→ record evidence and decisions
 → preserve useful memory
 → enforce hooks/guardrails
 → report a reproducible result
