@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from .intelligence import build_intelligence
 from .orchestrator import plan
 from .tool_gateway import write_mcp_configs
 from .tools import write_policy
@@ -118,7 +119,7 @@ def _refresh_brain(root: Path) -> dict[str, Any]:
 
 
 def _correction_worker(root: Path, task: str, skill: str, runtime: str, round_no: int, base_ref: str) -> tuple[dict[str, Any], WorkerWorkspace | None]:
-    worker = {"id": f"sd1-correction-{round_no}", "skill": skill or "software-architect", "phase": "correction", "inputs": {"context": {"correction_round": round_no}}}
+    worker = {"id": f"sd1-correction-{round_no}", "skill": skill or "software-architect", "phase": "correction", "inputs": {"context": {"correction_round": round_no}}
     return _run_worker(root, task, runtime, worker, base_ref)
 
 
@@ -143,6 +144,10 @@ def execute(root: str | Path, task: str, runtime: str = "auto", execute_agents: 
     if selected == "unavailable":
         execution["status"] = "runtime-unavailable"; execution["next"] = "Install Claude Code or Codex, or select a configured runtime."; return execution
     p = plan(root, task)
+    intelligence = build_intelligence(root, task, p)
+    execution["intelligence_preflight"] = intelligence
+    for worker in p.get("workers", []):
+        worker.setdefault("inputs", {}).setdefault("context", {})["engineering_intelligence"] = intelligence
     if not execute_agents:
         execution["status"] = "planned"; execution["workers"] = [{"id": w["id"], "skill": w["skill"], "phase": w["phase"], "depends_on": w.get("depends_on", [])} for w in p["workers"][: execution["max_workers"]]]; execution["next"] = "Re-run with --execute to launch the selected runtime."; return execution
     if not runtime_available(selected):
