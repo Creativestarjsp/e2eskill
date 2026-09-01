@@ -1,0 +1,26 @@
+release:
+  gates:
+    - repository-clean-or-approved-changes
+    - skill-scorecard-passed
+    - required-tests-passed
+    - security-review-passed
+    - runtime-adapter-validation
+    - benchmark-smoke-passed
+    - documentation-synchronized
+    - no-known-blocking-regressions
+
+  artifacts:
+    - verification-report
+    - changed-files-report
+    - test-report
+    - security-report
+    - benchmark-report
+    - release-notes
+
+  approval:
+    technical: sd3
+    release: explicit-owner-approval
+
+  rollback:
+    required_for: [production, migration, security-sensitive]
+    evidence: rollback-plan-and-validation
