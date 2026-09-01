@@ -16,7 +16,7 @@ def secret_scan(root: str | Path = ".") -> dict[str, Any]:
     root = Path(root).resolve()
     findings = []
     for p in root.rglob("*"):
-        if not p.is_file() or any(x in {".git", "node_modules", ".e2e"} for x in p.parts):
+        if not p.is_file() or any(x in {".git", "node_modules", ".e2e", "__pycache__"} for x in p.parts):
             continue
         if p.name in PROTECTED or p.stat().st_size > 1_000_000:
             continue
