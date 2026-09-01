@@ -67,6 +67,16 @@ PY
       matrix:
         family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
         attempt: [1, 2]
+    services:
+      mongodb:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -87,10 +97,43 @@ PY
             database-mongoose)
               printf '%s\n' '{"name":"proof","private":true,"dependencies":{"mongoose":"^9.0.0"}}' > proof_fixture/package.json
               printf '%s\n' "const mongoose=require('mongoose');" 'const S=new mongoose.Schema({email:{type:String,required:true,unique:true},displayName:{type:String,required:true}});' 'module.exports=mongoose.model("User",S);' > proof_fixture/user.js
-              printf '%s\n' "const assert=require('node:assert/strict');const User=require('./user');" "assert.equal(new User({email:'a@b.com',displayName:'A'}).validateSync(),undefined);" "assert.throws(()=>new User({displayName:'A'}).validateSync());" > proof_fixture/test_user.js ;;
+              cat > proof_fixture/test_user.js <<'NODE'
+const assert = require('node:assert/strict');
+const mongoose = require('mongoose');
+const User = require('./user');
+const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/e2e-proof';
+(async () => {
+  await mongoose.connect(uri);
+  await User.deleteMany({});
+  assert.equal(User.schema.options.timestamps, true);
+  assert.equal(User.schema.path('email').options.lowercase, true);
+  const user = await User.create({email: 'A@B.COM', displayName: 'A'});
+  assert.equal(user.email, 'a@b.com');
+  const found = await User.findOne({email: 'a@b.com'}).lean();
+  assert.equal(found.displayName, 'A');
+  await assert.rejects(() => User.create({email: 'a@b.com', displayName: 'Duplicate'}));
+  await User.deleteOne({_id: user._id});
+  assert.equal(await User.countDocuments(), 0);
+  await mongoose.disconnect();
+})().catch(async err => { console.error(err); try { await mongoose.disconnect(); } catch {} process.exit(1); });
+NODE ;;
             frontend-ui)
-              printf '%s\n' '<!doctype html><button id="increment" type="button">Count: <span id="count">0</span></button>' > proof_fixture/index.html
-              printf '%s\n' 'const fs=require("node:fs"); const html=fs.readFileSync("index.html","utf8"); if(!html.includes("id=\\"increment\\"")) process.exit(1);' > proof_fixture/test_ui.js ;;
+              printf '%s\n' '{"name":"proof","private":true,"dependencies":{"playwright":"^1.55.0"}}' > proof_fixture/package.json
+              printf '%s\n' '<!doctype html><html><body><button id="increment" type="button">Count: <span id="count">0</span></button></body></html>' > proof_fixture/index.html
+              cat > proof_fixture/test_ui.js <<'NODE'
+const assert = require('node:assert/strict');
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({headless: true});
+  const page = await browser.newPage();
+  await page.goto('file://' + require('node:path').resolve('index.html'));
+  await page.getByRole('button', {name: /Count: 0/}).click();
+  await assert.doesNotReject(async () => page.getByText('Count: 1').waitFor());
+  assert.equal(await page.locator('#count').textContent(), '1');
+  await page.screenshot({path: 'proof-ui.png'});
+  await browser.close();
+})().catch(err => { console.error(err); process.exit(1); });
+NODE ;;
             authentication-security)
               printf '%s\n' 'import hashlib' 'def fingerprint(token): return hashlib.sha256(token.encode()).hexdigest()' > proof_fixture/auth.py
               printf '%s\n' 'from auth import fingerprint' 'def test_secret_not_returned(): assert fingerprint("secret")!="secret"' > proof_fixture/test_auth.py ;;
@@ -99,42 +142,47 @@ PY
               printf '%s\n' 'from cart import subtotal' 'def test_regression(): assert subtotal([{"price":10,"quantity":2},{"price":5,"quantity":1}])==25' > proof_fixture/test_cart.py
               sed -i 's/i\["price"\]\*i\["quantity"\]/i["price"]+i["quantity"]/' proof_fixture/cart.py ;;
           esac
-      - if: matrix.family == 'database-mongoose'
+      - name: Install database/browser dependencies
         working-directory: /tmp/e2e-proof/proof_fixture
-        run: npm install --no-audit --no-fund
+        if: matrix.family == 'database-mongoose' || matrix.family == 'frontend-ui'
+        run: |
+          npm install --no-audit --no-fund
+          if [ '${{ matrix.family }}' = frontend-ui ]; then npx playwright install --with-deps chromium; fi
       - name: P3 real SD1 execution
         working-directory: /tmp/e2e-proof
-        env: {FAMILY: ${{ matrix.family }}, ATTEMPT: ${{ matrix.attempt }}}
+        env:
+          FAMILY: ${{ matrix.family }}
+          ATTEMPT: ${{ matrix.attempt }}
+          MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof
         run: |
           case "$FAMILY" in
             api-backend) T='Implement discount-aware calculate_total and focused tests.';;
-            database-mongoose) T='Improve the Mongoose model with production-quality validation/options and focused tests.';;
-            frontend-ui) T='Implement interactive count increment behavior and verification.';;
+            database-mongoose) T='Improve the Mongoose model with production-quality validation/options, real MongoDB CRUD, duplicate protection, and focused integration tests. Use the provided MONGODB_URI; do not replace MongoDB with mocks or in-memory emulators.';;
+            frontend-ui) T='Implement interactive count increment behavior and verification. This proof MUST use a real Playwright browser click against the fixture HTML and verify the rendered state change plus screenshot; do not replace it with string/static HTML inspection.';;
             authentication-security) T='Harden the authentication helper with safe token verification and wrong-token security tests.';;
             regression-repair) T='Diagnose and repair the intentional subtotal regression without weakening tests.';;
           esac
           python -m e2e execute "$T Run all fixture tests. Do not modify the E2E harness or weaken/delete tests; changes stay in proof_fixture." --runtime claude-code --execute --max-workers 2 > ".proof-$FAMILY-$ATTEMPT.json"
       - name: P4 independent SD3 review
         working-directory: /tmp/e2e-proof
-        env: {FAMILY: ${{ matrix.family }}}
+        env:
+          FAMILY: ${{ matrix.family }}
+          REPORT: /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
         run: |
           case "$FAMILY" in
             api-backend) T='Verify the completed API backend proof task.';;
-            database-mongoose) T='Verify the completed Mongoose persistence proof task.';;
-            frontend-ui) T='Verify the completed frontend UI proof task.';;
+            database-mongoose) T='Verify the completed Mongoose persistence proof task, including real MongoDB CRUD and validation evidence.';;
+            frontend-ui) T='Verify the completed frontend UI proof task, including a real browser click, rendered state change, and screenshot evidence.';;
             authentication-security) T='Verify the completed authentication security proof task.';;
             regression-repair) T='Verify the completed regression repair proof task.';;
           esac
-          python -c 'import json; from e2e.supervisor import run_independent_review; r=run_independent_review(".", __import__("os").environ["T"], "claude-code", __import__("os").environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2))' 
-        env:
-          T: ${{ matrix.family }}
-          REPORT: /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
+          REVIEW_TASK="$T" python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", os.environ["REVIEW_TASK"], "claude-code", os.environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
       - name: Verify fixture and proof decisions
         working-directory: /tmp/e2e-proof
+        env: {MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof}
         run: |
           set -euo pipefail
-          if [ '${{ matrix.family }}' = database-mongoose ]; then node proof_fixture/test_user.js; else python -m pytest proof_fixture -q; fi
-          if [ '${{ matrix.family }}' = frontend-ui ]; then node proof_fixture/test_ui.js; fi
+          if [ '${{ matrix.family }}' = database-mongoose ]; then node proof_fixture/test_user.js; elif [ '${{ matrix.family }}' = frontend-ui ]; then node proof_fixture/test_ui.js; else python -m pytest proof_fixture -q; fi
           git diff --check
           python - <<'PY'
 import json
@@ -224,18 +272,16 @@ PY
       - name: Enforce production proof standard
         run: |
           python - <<'PY'
-import json, pathlib, sys
+import json, pathlib
 root=pathlib.Path('proof-artifacts')
 expected={f'{family}-{attempt}' for family in ['api-backend','database-mongoose','frontend-ui','authentication-security','regression-repair'] for attempt in [1,2]}
 found=set(); approved=0; independent=0
 for d in root.glob('e2e-proof-*'):
     name=d.name.removeprefix('e2e-proof-')
     if name not in expected: continue
-    run_files=list(d.glob('.proof-*.json'))
-    sd3=list(d.glob('independent-sd3.json'))
+    run_files=list(d.glob('.proof-*.json')); sd3=list(d.glob('independent-sd3.json'))
     if len(run_files)!=1 or len(sd3)!=1: raise SystemExit(f'missing evidence: {d}')
-    run=json.load(run_files[0]); review=json.load(sd3[0])
-    found.add(name)
+    run=json.load(run_files[0]); review=json.load(sd3[0]); found.add(name)
     if run.get('status')!='approved': raise SystemExit(f'P3 failure: {name}')
     if run.get('supervisor',{}).get('report',{}).get('decision')!='approved': raise SystemExit(f'built-in SD3 failure: {name}')
     if review.get('mode')!='independent-read-only' or review.get('report',{}).get('decision')!='approved': raise SystemExit(f'P4 failure: {name}')
