@@ -13,7 +13,7 @@ The repository contains an executable Python runtime with no mandatory third-par
 - `e2e.verify` — executable verification/evidence runner.
 - `e2e.adapters` — Claude/Codex/standalone detection and capability reporting.
 - `e2e.orchestrator` — SD2 planning with bounded SD1 workers and dependency-aware phases.
-- `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, integrates isolated worktrees, and then requests an independent SD3 review.
+- `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, integrates isolated worktrees, refreshes CodeBrain, and runs an independent SD3 review with bounded correction rounds.
 - `e2e.worktree` — isolated Git worktree lifecycle, branch creation, change detection, commit, merge, and cleanup.
 - `e2e.benchmark` — repeated command benchmark runner with success rate, median latency and variance.
 - `e2e.release` — release gate checker for skills, security, CodeBrain freshness, tests and diff hygiene.
@@ -41,7 +41,19 @@ When execution is enabled, dependency-ready SD1 workers run in separate Git work
 
 Failed or timed-out worker workspaces are preserved rather than silently discarded. Successful integrated workspaces are cleaned up after merge. The primary checkout must be clean before execution begins.
 
-The executor never silently turns a dry-run into execution. Worker output is captured as evidence under `.e2e/executions/`. A successful worker phase is followed by an SD3 supervisor invocation that is instructed to independently inspect the integrated repository rather than trusting worker claims.
+### SD3 correction loop
+
+After integration, CodeBrain is refreshed and SD3 independently reviews the actual repository. SD3 must return structured JSON containing a decision and, when needed, minimal corrective tasks. The executor supports at most **two correction rounds**. Each correction is executed in a fresh isolated worktree, integrated, followed by another CodeBrain refresh and SD3 review.
+
+The loop terminates with one of these meaningful states:
+
+- `approved` — SD3 accepted the integrated implementation.
+- `rejected` — SD3 found a fundamental requirements or architecture problem.
+- `correction-limit-reached` — fixable issues remain after the bounded correction budget.
+- `supervisor-invalid-report` — SD3 did not produce the required structured decision.
+- `correction-worker-failure` / `correction-merge-conflict` — correction could not be safely integrated.
+
+There are no blind retries. Persistent blockers remain explicit in the execution report under `.e2e/executions/`.
 
 ## Commands
 
