@@ -13,6 +13,7 @@ from .executor import execute
 from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
+from .tools import check_registry, load_tools
 from .verify import verify
 
 
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name)
     c = sub.add_parser("context"); c.add_argument("task")
     s = sub.add_parser("skill"); ss = s.add_subparsers(dest="skill_cmd", required=True); ss.add_parser("list"); si = ss.add_parser("inspect"); si.add_argument("name")
+    t = sub.add_parser("tool"); ts = t.add_subparsers(dest="tool_cmd", required=True); ts.add_parser("list"); ts.add_parser("check"); ti = ts.add_parser("inspect"); ti.add_argument("name")
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
     r = sub.add_parser("run"); r.add_argument("task")
     o = sub.add_parser("orchestrate"); o.add_argument("task")
@@ -41,9 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "init":
         (root / ".e2e").mkdir(exist_ok=True); print(json.dumps({"status":"initialized","root":str(root)}, indent=2)); return 0
     if args.cmd == "doctor":
-        print(json.dumps({"runtime": detect(root), "capabilities": capabilities(root), "python": os.sys.version}, indent=2)); return 0
+        print(json.dumps({"runtime": detect(root), "capabilities": capabilities(root), "tools": check_registry(root), "python": os.sys.version}, indent=2)); return 0
     if args.cmd == "status":
-        brain = CodeBrain(root); print(json.dumps({"runtime": detect(root), "brain": brain.check(), "skills": len(discover(root)), "capabilities": capabilities(root)}, indent=2)); return 0
+        brain = CodeBrain(root); print(json.dumps({"runtime": detect(root), "brain": brain.check(), "skills": len(discover(root)), "tools": check_registry(root), "capabilities": capabilities(root)}, indent=2)); return 0
     if args.cmd == "context":
         brain = CodeBrain(root)
         if not brain.store.exists(): brain.build()
@@ -52,6 +54,12 @@ def main(argv: list[str] | None = None) -> int:
         skills = discover(root)
         if args.skill_cmd == "list": print(json.dumps(skills, indent=2)); return 0
         found = next((s for s in skills if s["name"] == args.name), None); print(json.dumps(found or {"error":"skill-not-found"}, indent=2)); return 0 if found else 1
+    if args.cmd == "tool":
+        tools = load_tools(root)
+        if args.tool_cmd == "list": print(json.dumps([tool.__dict__ for tool in tools], indent=2)); return 0
+        if args.tool_cmd == "check":
+            result = check_registry(root); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
+        found = next((tool for tool in tools if tool.name == args.name), None); print(json.dumps(found.__dict__ if found else {"error":"tool-not-found"}, indent=2)); return 0 if found else 1
     if args.cmd == "brain":
         brain = CodeBrain(root)
         if args.brain_cmd == "build": print(json.dumps({"indexed_files": len(brain.build()["files"])}, indent=2)); return 0
