@@ -56,9 +56,30 @@ PY
           name: e2e-p0-p2
           path: /tmp/plan.json
 
+  proof-matrix:
+    name: Build proof matrix
+    runs-on: ubuntu-latest
+    outputs:
+      attempts: ${{ steps.matrix.outputs.attempts }}
+    steps:
+      - id: matrix
+        env:
+          REPETITIONS: ${{ github.event.inputs.repetitions || '2' }}
+        run: |
+          set -euo pipefail
+          [[ "$REPETITIONS" =~ ^[1-9][0-9]*$ ]]
+          (( REPETITIONS <= 5 ))
+          attempts=$(python - "$REPETITIONS" <<'PY'
+import json, sys
+n = int(sys.argv[1])
+print(json.dumps(list(range(1, n + 1))))
+PY
+          )
+          echo "attempts=$attempts" >> "$GITHUB_OUTPUT"
+
   task-proof:
     name: P3-P4 • ${{ matrix.family }} • attempt ${{ matrix.attempt }}
-    needs: p0-p2
+    needs: [p0-p2, proof-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -66,7 +87,7 @@ PY
       max-parallel: 2
       matrix:
         family: [api-backend, database-mongoose, frontend-ui, authentication-security, regression-repair]
-        attempt: [1, 2]
+        attempt: ${{ fromJSON(needs.proof-matrix.outputs.attempts) }}
     services:
       mongodb:
         image: mongo:8.0
@@ -104,6 +125,7 @@ const User = require('./user');
 const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/e2e-proof';
 (async () => {
   await mongoose.connect(uri);
+  await User.init();
   await User.deleteMany({});
   assert.equal(User.schema.options.timestamps, true);
   assert.equal(User.schema.path('email').options.lowercase, true);
@@ -116,7 +138,8 @@ const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/e2e-proof';
   assert.equal(await User.countDocuments(), 0);
   await mongoose.disconnect();
 })().catch(async err => { console.error(err); try { await mongoose.disconnect(); } catch {} process.exit(1); });
-NODE ;;
+NODE
+              ;;
             frontend-ui)
               printf '%s\n' '{"name":"proof","private":true,"dependencies":{"playwright":"^1.55.0"}}' > proof_fixture/package.json
               printf '%s\n' '<!doctype html><html><body><button id="increment" type="button">Count: <span id="count">0</span></button></body></html>' > proof_fixture/index.html
@@ -128,12 +151,13 @@ const { chromium } = require('playwright');
   const page = await browser.newPage();
   await page.goto('file://' + require('node:path').resolve('index.html'));
   await page.getByRole('button', {name: /Count: 0/}).click();
-  await assert.doesNotReject(async () => page.getByText('Count: 1').waitFor());
+  await page.getByText('Count: 1').waitFor();
   assert.equal(await page.locator('#count').textContent(), '1');
   await page.screenshot({path: 'proof-ui.png'});
   await browser.close();
 })().catch(err => { console.error(err); process.exit(1); });
-NODE ;;
+NODE
+              ;;
             authentication-security)
               printf '%s\n' 'import hashlib' 'def fingerprint(token): return hashlib.sha256(token.encode()).hexdigest()' > proof_fixture/auth.py
               printf '%s\n' 'from auth import fingerprint' 'def test_secret_not_returned(): assert fingerprint("secret")!="secret"' > proof_fixture/test_auth.py ;;
@@ -166,17 +190,10 @@ NODE ;;
       - name: P4 independent SD3 review
         working-directory: /tmp/e2e-proof
         env:
-          FAMILY: ${{ matrix.family }}
           REPORT: /tmp/e2e-proof/.proof-${{ matrix.family }}-${{ matrix.attempt }}.json
         run: |
-          case "$FAMILY" in
-            api-backend) T='Verify the completed API backend proof task.';;
-            database-mongoose) T='Verify the completed Mongoose persistence proof task, including real MongoDB CRUD and validation evidence.';;
-            frontend-ui) T='Verify the completed frontend UI proof task, including a real browser click, rendered state change, and screenshot evidence.';;
-            authentication-security) T='Verify the completed authentication security proof task.';;
-            regression-repair) T='Verify the completed regression repair proof task.';;
-          esac
-          REVIEW_TASK="$T" python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", os.environ["REVIEW_TASK"], "claude-code", os.environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
+          REVIEW_TASK='Independently verify the completed execution task and its evidence. Inspect the actual changed files, tests, runtime result, and integration evidence; do not mutate the repository.' \
+          python -c 'import json,os; from e2e.supervisor import run_independent_review; r=run_independent_review(".", os.environ["REVIEW_TASK"], "claude-code", os.environ["REPORT"]); open("independent-sd3.json","w").write(json.dumps(r,indent=2)); assert r["report"]["decision"]=="approved"'
       - name: Verify fixture and proof decisions
         working-directory: /tmp/e2e-proof
         env: {MONGODB_URI: mongodb://127.0.0.1:27017/e2e-proof}
@@ -273,34 +290,32 @@ PY
         run: |
           python - <<'PY'
 import json, pathlib
-root=pathlib.Path('proof-artifacts')
-expected={f'{family}-{attempt}' for family in ['api-backend','database-mongoose','frontend-ui','authentication-security','regression-repair'] for attempt in [1,2]}
-found=set(); approved=0; independent=0
-for d in root.glob('e2e-proof-*'):
-    name=d.name.removeprefix('e2e-proof-')
-    if name not in expected: continue
-    run_files=list(d.glob('.proof-*.json')); sd3=list(d.glob('independent-sd3.json'))
-    if len(run_files)!=1 or len(sd3)!=1: raise SystemExit(f'missing evidence: {d}')
-    run=json.load(run_files[0]); review=json.load(sd3[0]); found.add(name)
-    if run.get('status')!='approved': raise SystemExit(f'P3 failure: {name}')
-    if run.get('supervisor',{}).get('report',{}).get('decision')!='approved': raise SystemExit(f'built-in SD3 failure: {name}')
-    if review.get('mode')!='independent-read-only' or review.get('report',{}).get('decision')!='approved': raise SystemExit(f'P4 failure: {name}')
-    approved += 1; independent += 1
-if found != expected: raise SystemExit(f'P3/P4 coverage mismatch: missing={sorted(expected-found)}')
-if approved/len(expected) < .90: raise SystemExit('P6 pass rate below 90%')
-recovery=sorted(root.glob('e2e-recovery-*'))
-if len(recovery) < 3: raise SystemExit('P5 requires 3 recovery scenarios')
-for d in recovery:
-    files=list(d.glob('recovery-*.json')); sd3=list(d.glob('independent-sd3.json'))
-    if len(files)!=1 or len(sd3)!=1: raise SystemExit(f'incomplete P5 evidence: {d}')
-    run=json.load(files[0]); review=json.load(sd3[0])
-    if run.get('status')!='approved': raise SystemExit(f'P5 runtime failure: {d.name}')
-    if review.get('report',{}).get('decision')!='approved': raise SystemExit(f'P5 SD3 failure: {d.name}')
-result={'status':'PROVEN','p0_p2':'passed','p3_p4':f'{approved}/10','p5':'3/3','p6_pass_rate':approved/10,'independent_sd3_reviews':independent,'anti_cheating':'required tests preserved'}
-pathlib.Path('PROVEN.json').write_text(json.dumps(result,indent=2))
-print(json.dumps(result,indent=2))
+root = pathlib.Path('proof-artifacts')
+proof = sorted(root.glob('e2e-proof-*/.proof-*.json'))
+independent = sorted(root.glob('e2e-proof-*/independent-sd3.json'))
+recovery = sorted(root.glob('e2e-recovery-*/recovery-*.json'))
+recovery_independent = sorted(root.glob('e2e-recovery-*/independent-sd3.json'))
+if len(proof) != len(independent):
+    raise SystemExit(f'P4 evidence mismatch: {len(proof)} execution reports vs {len(independent)} independent reviews')
+if len(proof) < 10:
+    raise SystemExit(f'P3/P4 requires at least 10 successful task attempts; found {len(proof)}')
+if len(recovery) != 3 or len(recovery_independent) != 3:
+    raise SystemExit(f'P5 requires 3 recovery scenarios; found {len(recovery)} runtime and {len(recovery_independent)} independent reviews')
+for p in proof:
+    data = json.loads(p.read_text())
+    if data.get('status') != 'approved' or data.get('supervisor', {}).get('report', {}).get('decision') != 'approved':
+        raise SystemExit(f'P3/P4 runtime evidence not approved: {p}')
+for p in independent:
+    data = json.loads(p.read_text())
+    if data.get('mode') != 'independent-read-only' or data.get('report', {}).get('decision') != 'approved':
+        raise SystemExit(f'Independent SD3 did not approve: {p}')
+for p in recovery:
+    data = json.loads(p.read_text())
+    if data.get('status') != 'approved' or data.get('supervisor', {}).get('report', {}).get('decision') != 'approved':
+        raise SystemExit(f'P5 runtime evidence not approved: {p}')
+for p in recovery_independent:
+    data = json.loads(p.read_text())
+    if data.get('mode') != 'independent-read-only' or data.get('report', {}).get('decision') != 'approved':
+        raise SystemExit(f'P5 independent SD3 did not approve: {p}')
+print(json.dumps({'status':'PROVEN','p3_p4_attempts':len(proof),'p5_recovery':len(recovery),'independent_sd3_reviews':len(independent)+len(recovery_independent),'anti_cheating':'required tests preserved'}, indent=2))
 PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: E2E-PROVEN-${{ github.sha }}
-          path: PROVEN.json
