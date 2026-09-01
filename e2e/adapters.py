@@ -15,8 +15,12 @@ def capabilities(root: str | Path = ".") -> dict[str, Any]:
         "browser_visible": False,
         "browser_headless": False,
         "mcp": False,
-        "subagents": False,
+        "subagents": shutil.which("claude") is not None or shutil.which("codex") is not None,
         "hooks": True,
+        "agent_runtimes": {
+            "claude-code": shutil.which("claude") is not None,
+            "codex": shutil.which("codex") is not None,
+        },
         "runtime_files": {"claude-code": (root / "CLAUDE.md").exists(), "codex": (root / "AGENTS.md").exists()},
     }
 
