@@ -16,6 +16,9 @@ from .skills import discover, match
 from .verify import verify
 
 
+SUCCESS_EXECUTION_STATUSES = {"approved", "planned", "runtime-unavailable"}
+
+
 def _root() -> Path:
     return Path.cwd()
 
@@ -62,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, indent=2)); return 0
     if args.cmd == "execute":
         result = execute(root, args.task, runtime=args.runtime, execute_agents=args.execute_agents, max_workers=max(1, min(args.max_workers, 4)))
-        print(json.dumps(result, indent=2)); return 0 if result["status"] not in {"worker-failure", "supervisor-failure", "blocked-dependency-cycle"} else 1
+        print(json.dumps(result, indent=2)); return 0 if result["status"] in SUCCESS_EXECUTION_STATUSES else 1
     if args.cmd == "verify":
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "benchmark":
