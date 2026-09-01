@@ -17,6 +17,13 @@ jobs:
           cache: pip
       - name: Install E2E and test tooling
         run: python -m pip install -e . pytest
+      - name: Validate Python runtime
+        run: python -m compileall -q e2e
+      - name: Validate skill catalog
+        run: |
+          python -m e2e skill list
+          python -m e2e skill inspect mongoose-developer
+          python -m e2e skill inspect database-abstraction
       - name: Run tests
         run: python -m pytest -q
       - name: Build CodeBrain
