@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "e2e-engineering"
+version = "0.1.0"
+description = "Runtime-neutral engineering system for AI-assisted software development"
+requires-python = ">=3.10"
+
+[project.scripts]
+e2e = "e2e.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
