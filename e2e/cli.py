@@ -9,8 +9,10 @@ from .adapters import capabilities, detect
 from .benchmark import run_case
 from .brain import CodeBrain
 from .context import build_context
+from .evaluation import evaluate_run
 from .executor import execute
 from .guardrails import check as check_guardrails, policy as guardrail_policy, write_policy as write_guardrail_policy
+from .introspection import diagnose
 from .memory import Memory
 from .orchestrator import write_plan
 from .release import release_check
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("execute"); e.add_argument("task"); e.add_argument("--runtime", choices=("auto", "claude-code", "codex"), default="auto"); e.add_argument("--execute", dest="execute_agents", action="store_true", help="Actually launch SD1/SD3 agents; default is dry-run"); e.add_argument("--max-workers", type=int, default=4)
     v = sub.add_parser("verify"); v.add_argument("--test", dest="test_command")
     be = sub.add_parser("benchmark"); be.add_argument("command"); be.add_argument("--repetitions", type=int, default=1)
+    ev = sub.add_parser("evaluate"); ev.add_argument("task"); ev.add_argument("--reports", required=True, help="Path to a JSON file containing worker reports")
+    ins = sub.add_parser("introspect"); ins.add_argument("--run", required=True, help="Path to a JSON execution report")
     args = p.parse_args(argv)
     root = _root()
     if args.cmd == "init":
@@ -108,6 +112,13 @@ def main(argv: list[str] | None = None) -> int:
         result = verify(root, args.test_command); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     if args.cmd == "benchmark":
         result = run_case(root, args.command, args.repetitions); print(json.dumps(result, indent=2)); return 0 if result["success_rate"] == 1 else 1
+    if args.cmd == "evaluate":
+        reports = json.loads(Path(args.reports).read_text(encoding="utf-8"))
+        if not isinstance(reports, list): return 1
+        result = evaluate_run(root, args.task, reports); print(json.dumps(result, indent=2)); return 0 if not result["blocking"] else 1
+    if args.cmd == "introspect":
+        run = json.loads(Path(args.run).read_text(encoding="utf-8"))
+        result = diagnose(root, run); print(json.dumps(result, indent=2)); return 0
     if args.cmd == "release":
         result = release_check(root); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
     return 1
