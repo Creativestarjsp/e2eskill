@@ -49,7 +49,7 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 | 6 | Complete | 🟢 Tool registry, scopes, approval policy, audit ledger, MCP boundary implemented |
 | 7 | Complete | 🟢 Hooks + persistent memory runtime implemented |
 | 8 | Complete | 🟢 Verification runner + independent SD3 review/correction |
-| 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces |
+| 9 | Complete | 🟢 Claude/Codex runtime contract, parity checks, isolated MCP handoff, and runtime inspection CLI |
 | 10 | Complete | 🟢 CLI implemented; visualization remains future presentation layer |
 | 11 | Complete | 🟢 Reproducible benchmark runner |
 | 12 | Complete | 🟢 Automated release gate checker; explicit SD3/owner approval remains required |
@@ -65,7 +65,8 @@ e2e/
 ├── guardrails.py  runtime-enforced commit/merge policy
 ├── memory.py      durable scoped memory with expiry/supersession
 ├── verify.py      evidence/verification runner
-├── adapters.py    runtime capability detection
+├── adapters.py    runtime capability detection + parity surface
+├── runtime_contract.py shared Claude/Codex execution contract
 ├── tools.py       tool registry + policy + audit
 ├── tool_gateway.py stdio MCP gateway
 ├── orchestrator.py SD2 planning and dependency graph
@@ -76,13 +77,38 @@ e2e/
 └── cli.py         developer CLI
 
 runtime/
-└── tools.json     controlled capability registry
+├── tools.json     controlled capability registry
+└── RUNTIME-ADAPTER-STANDARD.md shared runtime adapter contract
 
 architecture/
 └── TOOL-SYSTEM.md tool/MCP architecture and security boundary
 ```
 
 Generated state remains under `.e2e/` and is ignored by Git. Tool audit records are append-only JSONL and fingerprint argument payloads rather than storing secret values.
+
+## Runtime Adapter Contract
+
+Claude Code and Codex share one runtime-neutral contract. Runtime-specific behavior is limited to launcher/configuration transport:
+
+```text
+Task + role
+ ↓
+Project context + rules + safe memory
+ ↓
+CodeBrain context + matched skills
+ ↓
+Role tool policy
+ ↓
+E2E MCP gateway
+ ↓
+Runtime-specific launcher
+ ↓
+Evidence/report contract
+ ↓
+SD3 verification
+```
+
+Use `e2e runtime inspect`, `e2e runtime contract --runtime claude-code`, and `e2e runtime parity` to inspect the contract. Claude uses `CLAUDE.md` and strict MCP JSON configuration; Codex uses `AGENTS.md` and isolated `CODEX_HOME` TOML configuration. Neither runtime may weaken E2E authorization.
 
 ## Persistent Memory Contract
 
@@ -187,6 +213,7 @@ The correction loop is bounded at two rounds. Failed workers, merge conflicts, m
 13. Tool audit evidence must never persist raw secrets.
 14. Benchmark claims must be reproduced with real agentic execution and executed verification.
 15. Memory is contextual evidence, never permission to bypass current policy.
+16. Runtime parity is measured on the shared contract, not identical launcher syntax.
 
 ## Verification
 
