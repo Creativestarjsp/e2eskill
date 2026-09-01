@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -53,6 +53,43 @@ def load_tools(root: Path) -> list[Tool]:
 
 def tool_map(root: Path) -> dict[str, Tool]:
     return {tool.name: tool for tool in load_tools(root)}
+
+
+def policy_for_role(root: Path, role: str) -> dict[str, Any]:
+    tools = [tool for tool in load_tools(root) if role in tool.roles]
+    return {
+        "version": 1,
+        "role": role,
+        "default_policy": "deny",
+        "allowed_tools": [
+            {
+                "name": tool.name,
+                "transport": tool.transport,
+                "risk": tool.risk,
+                "scopes": list(tool.scopes),
+                "approval": tool.approval,
+            }
+            for tool in tools
+            if tool.approval == "none"
+        ],
+        "approval_required_tools": [
+            {
+                "name": tool.name,
+                "transport": tool.transport,
+                "risk": tool.risk,
+                "scopes": list(tool.scopes),
+            }
+            for tool in tools
+            if tool.approval == "explicit"
+        ],
+    }
+
+
+def write_policy(root: Path, role: str, path: Path | None = None) -> Path:
+    target = path or (root / ".e2e" / "tool-policy.json")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(policy_for_role(root, role), indent=2, sort_keys=True), encoding="utf-8")
+    return target
 
 
 def decide(root: Path, tool_name: str, role: str, scopes: set[str] | None = None, approved: bool = False) -> ToolDecision:
