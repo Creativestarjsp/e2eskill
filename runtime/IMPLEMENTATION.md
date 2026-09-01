@@ -15,7 +15,7 @@ The repository contains an executable Python runtime with no mandatory third-par
 - `e2e.tools` — role/scope/approval registry, policy materialization, secret-safe audit ledger, and registry validation.
 - `e2e.tool_gateway` — E2E-owned stdio MCP gateway with role-scoped discovery, allowlisted native handlers, path confinement, approval enforcement, and audit logging.
 - `e2e.orchestrator` — SD2 planning with bounded SD1 workers and dependency-aware phases.
-- `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, integrates isolated worktrees, refreshes CodeBrain, and runs an independent SD3 review with bounded correction rounds.
+- `e2e.executor` — dry-run/execute bridge that launches SD1 workers through Claude Code or Codex, injects the E2E MCP gateway into the selected runtime, integrates isolated worktrees, refreshes CodeBrain, and runs an independent SD3 review with bounded correction rounds.
 - `e2e.worktree` — isolated Git worktree lifecycle, branch creation, change detection, commit, merge, and cleanup.
 - `e2e.benchmark` — repeated command benchmark runner with success rate, median latency and variance.
 - `e2e.release` — release gate checker for skills, security, CodeBrain freshness, tests and diff hygiene.
@@ -23,7 +23,7 @@ The repository contains an executable Python runtime with no mandatory third-par
 
 ## Tool / MCP gateway
 
-E2E keeps authorization above the protocol boundary. MCP provides the interoperability protocol; E2E decides which role can see and invoke which registered capability.
+E2E keeps authorization above the protocol boundary. MCP provides interoperability; E2E decides which role can see and invoke each registered capability.
 
 The gateway currently exposes only registered, approval-free native read tools:
 
@@ -49,22 +49,22 @@ This writes ignored runtime state under `.e2e/mcp/`:
 .e2e/mcp/codex.toml
 ```
 
-Claude Code can load MCP servers from an explicit configuration file and can restrict a session to that configuration. Codex supports MCP servers through its MCP configuration, including stdio servers and per-server tool allowlists. E2E generates both artifacts without mutating the user's global runtime configuration.
+During real SD1/SD3 execution, E2E now generates these configurations inside the isolated worker/root runtime and connects the selected agent to the gateway. Claude execution receives the gateway through its explicit MCP configuration. Codex execution receives the generated stdio server through an isolated `CODEX_HOME`, so E2E does not overwrite the user's global Codex configuration.
 
-Automatic Claude injection into worker execution is the next adapter step; Codex configuration remains an explicit runtime-adapter concern rather than silently modifying the user's global configuration.
+The runtime adapter remains responsible for Claude/Codex-specific launch behavior; specialist skills remain runtime-neutral.
 
 ### Gateway security boundary
 
 1. Unknown tools are denied.
 2. Unauthorized roles are denied.
-3. Explicit-approval tools are denied unless an approval token is supplied by the execution layer.
+3. Explicit-approval tools are denied unless approval is supplied by the execution layer.
 4. Repository reads cannot escape the worker repository root.
 5. Shell reads use a fixed command allowlist.
 6. Tool arguments are fingerprinted rather than persisted verbatim in the audit ledger.
 7. Failed calls are auditable.
-8. The gateway never receives secret values unless a future handler explicitly requires them; secret-bearing handlers must remain runtime-managed.
+8. The gateway does not persist secret values; future secret-bearing handlers must remain runtime-managed.
 
-The current MCP specification uses a stateless protocol core and has strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions.
+The current MCP specification uses a stateless protocol core and strengthened authorization guidance. E2E therefore keeps this gateway stateless and avoids building new behavior around legacy session assumptions.
 
 ## Agent execution
 
@@ -80,7 +80,7 @@ This generates the SD2 plan without launching an agent. Actual execution require
 python -m e2e execute "implement the requested feature" --runtime auto --execute
 ```
 
-The runtime detects `claude` first, then `codex`. Claude Code is invoked in print mode with JSON output; Codex uses the configured `E2E_CODEX_COMMAND` value or its current adapter default. Set `E2E_CODEX_COMMAND` if the installed Codex CLI exposes a different execution command. Set `E2E_AGENT_TIMEOUT` to change the per-agent timeout; the default is 30 minutes.
+The runtime detects `claude` first, then `codex`. Claude Code is invoked in print mode with JSON output and the generated E2E MCP configuration; Codex uses the configured `E2E_CODEX_COMMAND` value or its current adapter default and receives an isolated `CODEX_HOME`. Set `E2E_CODEX_COMMAND` if the installed Codex CLI exposes a different execution command. Set `E2E_AGENT_TIMEOUT` to change the per-agent timeout; the default is 30 minutes.
 
 ### Isolated SD1 execution
 
@@ -117,6 +117,7 @@ python -m e2e tool list
 python -m e2e tool check
 python -m e2e tool policy sd1
 python -m e2e tool gateway --role sd1
+python -m e2e tool gateway --role sd1 --serve
 python -m e2e orchestrate "implement the requested feature"
 python -m e2e execute "implement the requested feature"
 python -m e2e execute "implement the requested feature" --runtime claude-code --execute
