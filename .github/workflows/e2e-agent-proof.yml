@@ -1,0 +1,114 @@
+name: E2E Real Agent Proof
+
+# Manual, cost-bearing proof. This workflow intentionally runs real SD1/SD3
+# agents against a disposable clone and never pushes their changes to main.
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: 'Independent proof attempts'
+        required: true
+        default: '3'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-agent-proof:
+    name: P3-P4 • Real SD1 + SD3 proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      E2E_AGENT_TIMEOUT: '1200'
+    steps:
+      - name: Checkout E2E
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install E2E
+        run: python -m pip install -e . pytest
+
+      # The official Claude Code action installs/configures the Claude CLI.
+      # GITHUB_PATH changes made by an action are available to later steps.
+      - name: Prepare Claude Code runtime
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: >-
+            Do not modify repository files. Verify the Claude Code runtime is
+            available for the following E2E proof job, then respond READY.
+
+      - name: Create disposable proof repository
+        run: |
+          rm -rf /tmp/e2e-proof
+          git clone --no-local "$GITHUB_WORKSPACE" /tmp/e2e-proof
+          cd /tmp/e2e-proof
+          git config user.name "E2E Proof"
+          git config user.email "e2e-proof@localhost"
+          mkdir -p proof_fixture
+          cat > proof_fixture/calculator.py <<'PY'
+          def add(a: int, b: int) -> int:
+              return a + b
+          PY
+          cat > proof_fixture/test_calculator.py <<'PY'
+          from calculator import add
+
+          def test_adds_positive_numbers():
+              assert add(2, 3) == 5
+
+          def test_adds_negative_numbers():
+              assert add(-2, -3) == -5
+          PY
+          cat > proof_fixture/requirements.txt <<'TXT'
+          pytest
+          TXT
+
+      - name: Run independent E2E attempts
+        working-directory: /tmp/e2e-proof
+        run: |
+          set -euo pipefail
+          attempts='${{ inputs.repetitions }}'
+          for attempt in $(seq 1 "$attempts"); do
+            echo "===== E2E PROOF ATTEMPT $attempt/$attempts ====="
+            git clean -fdx
+            # Restore the intentionally incomplete fixture for each independent attempt.
+            mkdir -p proof_fixture
+            cat > proof_fixture/calculator.py <<'PY'
+          def add(a: int, b: int) -> int:
+              return a + b
+          PY
+            cat > proof_fixture/test_calculator.py <<'PY'
+          from calculator import add
+
+          def test_adds_positive_numbers():
+              assert add(2, 3) == 5
+
+          def test_adds_negative_numbers():
+              assert add(-2, -3) == -5
+          PY
+            cat > proof_fixture/requirements.txt <<'TXT'
+          pytest
+          TXT
+            python -m e2e execute "Implement multiply(a, b) in proof_fixture/calculator.py, add focused tests for positive, negative, zero, and commutative cases, run the fixture tests, and have SD3 independently verify the implementation. Do not change the E2E proof harness or weaken existing tests." --runtime claude-code --execute --max-workers 2 | tee ".e2e-proof-attempt-${attempt}.json"
+            python -m pytest proof_fixture -q
+            grep -q 'def multiply' proof_fixture/calculator.py
+            git diff --check
+            git diff -- proof_fixture/calculator.py proof_fixture/test_calculator.py
+            # Preserve run artifacts for the evidence upload, then reset the disposable clone.
+            cp -a .e2e ".e2e-proof-artifacts-${attempt}" || true
+            git reset --hard HEAD >/dev/null
+          done
+
+      - name: Upload real-agent proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-real-agent-proof
+          path: /tmp/e2e-proof/.e2e-proof-*
+          if-no-files-found: warn
