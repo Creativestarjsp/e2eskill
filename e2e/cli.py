@@ -13,7 +13,8 @@ from .executor import execute
 from .orchestrator import write_plan
 from .release import release_check
 from .skills import discover, match
-from .tools import check_registry, load_tools
+from .tool_gateway import serve, write_mcp_configs
+from .tools import check_registry, load_tools, policy_for_role, write_policy
 from .verify import verify
 
 
@@ -31,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name)
     c = sub.add_parser("context"); c.add_argument("task")
     s = sub.add_parser("skill"); ss = s.add_subparsers(dest="skill_cmd", required=True); ss.add_parser("list"); si = ss.add_parser("inspect"); si.add_argument("name")
-    t = sub.add_parser("tool"); ts = t.add_subparsers(dest="tool_cmd", required=True); ts.add_parser("list"); ts.add_parser("check"); ti = ts.add_parser("inspect"); ti.add_argument("name")
+    t = sub.add_parser("tool"); ts = t.add_subparsers(dest="tool_cmd", required=True); ts.add_parser("list"); ts.add_parser("check"); ti = ts.add_parser("inspect"); ti.add_argument("name"); tp = ts.add_parser("policy"); tp.add_argument("role", choices=("sd1", "sd2", "sd3")); tg = ts.add_parser("gateway"); tg.add_argument("--role", choices=("sd1", "sd2", "sd3"), default="sd1"); tg.add_argument("--serve", action="store_true")
     b = sub.add_parser("brain"); bs = b.add_subparsers(dest="brain_cmd", required=True); bs.add_parser("build"); bs.add_parser("check"); bm = bs.add_parser("map"); bm.add_argument("path", nargs="?", default=""); bx = bs.add_parser("search"); bx.add_argument("query"); bi = bs.add_parser("impact"); bi.add_argument("target")
     r = sub.add_parser("run"); r.add_argument("task")
     o = sub.add_parser("orchestrate"); o.add_argument("task")
@@ -59,6 +60,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.tool_cmd == "list": print(json.dumps([tool.__dict__ for tool in tools], indent=2)); return 0
         if args.tool_cmd == "check":
             result = check_registry(root); print(json.dumps(result, indent=2)); return 0 if result["status"] == "pass" else 1
+        if args.tool_cmd == "policy": print(json.dumps(policy_for_role(root, args.role), indent=2)); return 0
+        if args.tool_cmd == "gateway":
+            configs = write_mcp_configs(root, args.role)
+            if args.serve: return serve(root, args.role)
+            print(json.dumps(configs, indent=2)); return 0
         found = next((tool for tool in tools if tool.name == args.name), None); print(json.dumps(found.__dict__ if found else {"error":"tool-not-found"}, indent=2)); return 0 if found else 1
     if args.cmd == "brain":
         brain = CodeBrain(root)
@@ -69,8 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.brain_cmd == "search": print(json.dumps(brain.search(args.query), indent=2)); return 0
         if args.brain_cmd == "impact": print(json.dumps(brain.impact(args.target), indent=2)); return 0
     if args.cmd in {"run", "orchestrate"}:
-        result = write_plan(root, args.task)
-        print(json.dumps(result, indent=2)); return 0
+        result = write_plan(root, args.task); print(json.dumps(result, indent=2)); return 0
     if args.cmd == "execute":
         result = execute(root, args.task, runtime=args.runtime, execute_agents=args.execute_agents, max_workers=max(1, min(args.max_workers, 4)))
         print(json.dumps(result, indent=2)); return 0 if result["status"] in SUCCESS_EXECUTION_STATUSES else 1
