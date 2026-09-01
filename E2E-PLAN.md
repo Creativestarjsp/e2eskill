@@ -47,7 +47,7 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 | 4 | Complete | 🟢 SD1/SD2/SD3 execution with isolated worktrees and bounded correction loop |
 | 5 | Complete | 🟢 Skills + executable registry implemented |
 | 6 | Complete | 🟢 Tool registry, scopes, approval policy, audit ledger, MCP boundary implemented |
-| 7 | Complete | 🟢 Hooks + memory runtime implemented |
+| 7 | Complete | 🟢 Hooks + persistent memory runtime implemented |
 | 8 | Complete | 🟢 Verification runner + independent SD3 review/correction |
 | 9 | Complete | 🟢 Runtime capability detection + Claude/Codex adapter surfaces |
 | 10 | Complete | 🟢 CLI implemented; visualization remains future presentation layer |
@@ -59,13 +59,15 @@ Existing skills remain canonical. The roadmap expands the system around them; it
 ```text
 e2e/
 ├── brain.py       CodeBrain MVP
-├── context.py     context + rules loader
+├── context.py     context + rules + memory loader
 ├── skills.py      skill registry/discovery
 ├── hooks.py       deterministic guardrails
-├── memory.py      durable scoped memory
+├── guardrails.py  runtime-enforced commit/merge policy
+├── memory.py      durable scoped memory with expiry/supersession
 ├── verify.py      evidence/verification runner
 ├── adapters.py    runtime capability detection
 ├── tools.py       tool registry + policy + audit
+├── tool_gateway.py stdio MCP gateway
 ├── orchestrator.py SD2 planning and dependency graph
 ├── worktree.py    isolated SD1 Git workspaces
 ├── executor.py    SD1 execution + integration + SD3 review/correction
@@ -81,6 +83,26 @@ architecture/
 ```
 
 Generated state remains under `.e2e/` and is ignored by Git. Tool audit records are append-only JSONL and fingerprint argument payloads rather than storing secret values.
+
+## Persistent Memory Contract
+
+```text
+Verified event / decision / constraint
+ ↓
+Secret-safe Memory.add()
+ ↓
+Scoped record + evidence + confidence
+ ↓
+Optional expiry / supersession
+ ↓
+Memory.search(task)
+ ↓
+Bounded Context package
+ ↓
+SD2 / SD1 / SD3
+```
+
+Memory is advisory context, not an authorization source. Current repository rules, security policy, tool policy, and fresh inspection always outrank memory. Secret-like summaries/evidence are rejected. Expired memories are omitted from normal retrieval, and superseded records are retained for audit/history but omitted from default search.
 
 ## Tool / MCP Contract
 
@@ -164,6 +186,7 @@ The correction loop is bounded at two rounds. Failed workers, merge conflicts, m
 12. Tool permissions are capability-based and deny-by-default.
 13. Tool audit evidence must never persist raw secrets.
 14. Benchmark claims must be reproduced with real agentic execution and executed verification.
+15. Memory is contextual evidence, never permission to bypass current policy.
 
 ## Verification
 
@@ -176,6 +199,7 @@ A supported runtime should be able to:
 ```text
 load project context
 → load applicable rules
+→ retrieve relevant safe memory
 → discover relevant skills
 → retrieve targeted code context
 → apply minimality decision ladder
